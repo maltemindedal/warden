@@ -17,8 +17,8 @@ Warden exits `1` when any Critical or High finding is present. Medium and below
 are reported but do not fail the job. See
 [Exit codes](../reference/cli.md#exit-codes).
 
-One caveat worth designing around: **a scanner that fails to run does not fail
-the build.** Its error is printed as a warning and the scan continues. Treat a
+**A scanner that fails to run does not fail the build.** Warden prints a warning
+and continues. Treat a
 green build as "no High or Critical findings *in the reports that were
 produced*", and check the log or `tools_run` in the report if you need
 certainty that every scanner ran.
@@ -28,10 +28,10 @@ certainty that every scanner ran.
 `.github/workflows/ci.yml` runs on pushes to `main`, on pull requests, and on
 manual dispatch. It has two jobs:
 
-- **`quality`** — formatting, linting, type checking, and tests. See
+- `quality` runs formatting, linting, type checking, and tests. See
   [Contributing](../contributing.md).
-- **`scan`** — runs Warden on this repository via the local action. Requires
-  `quality` to pass first.
+- `scan` runs Warden on this repository via the local action after `quality`
+  passes.
 
 To run a DAST scan, trigger the workflow manually from the Actions tab and
 supply the `url` input. On pushes and pull requests that input is empty, so ZAP
@@ -54,8 +54,8 @@ This repository ships a composite action at `action.yml`. Add a step:
 
 > **This repository has no tags or releases.** Pinning to `@v1` will fail
 > because that ref does not exist. Until a release is published, reference
-> `@main` or a specific commit SHA. Pinning to a SHA is the safer choice — a
-> branch ref can change under you, and this action executes a Docker build.
+> `@main` or a specific commit SHA. A SHA is safer because a branch ref can
+> change, and this action executes a Docker build.
 
 To enable DAST, add a `url`:
 
@@ -86,15 +86,15 @@ downloading the artifact.
 1. Builds the bundled `Dockerfile` as `warden:action`.
 2. Runs it against `GITHUB_WORKSPACE`, mounted at `/src`, as the runner's own
    user ID, with the Docker socket mounted for the optional ZAP scan.
-3. Uploads `security_audit.json` and `.security_reports/**` as an artifact —
-   with `if: always()`, so reports survive a failing scan.
+3. Uploads `security_audit.json` and `.security_reports/**` as an artifact. The
+   `if: always()` condition preserves reports from a failing scan.
 
 Because step 1 builds the image on every run, expect roughly a minute of build
 time before scanning starts.
 
 The uploaded artifact contains raw scanner output. Gitleaks findings are
 redacted before they reach `security_audit.json`, but `.security_reports/` holds
-each tool's unmodified report — treat the artifact as sensitive and keep it
+each tool's unmodified report. Treat the artifact as sensitive and keep it
 private.
 
 ## Other CI systems

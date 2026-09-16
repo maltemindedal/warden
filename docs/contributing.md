@@ -66,8 +66,8 @@ execution is injected rather than patched: tests pass the recording
 `CommandRunner` in `tests/fakes.py` and assert on the command line that was
 built, so the suite runs without Trivy, Semgrep, Gitleaks, or Docker installed.
 
-When adding support for a new field or tool, add a fixture rather than reaching
-for a live scan — it keeps the suite fast and deterministic.
+When adding support for a new field or tool, add a fixture. Using fixtures keeps
+the suite fast and deterministic.
 
 `pytest-cov` is available for coverage runs:
 
@@ -87,11 +87,12 @@ uv add --dev <package>
 
 Two constraints in `[tool.uv]` are deliberate and will affect you:
 
-- **`exclude-newer = "7 days"`** — a dependency cooldown. Distributions published
-  in the last seven days are not resolvable, so a freshly-published release
+- **`exclude-newer = "7 days"`** sets a dependency cooldown. Distributions
+  published in the last seven days are not resolvable, so a new release
   cannot be pulled in silently. If a lock fails on a very recent version, this is
   why; wait for it to age out rather than removing the setting.
-- **`override-dependencies = ["mcp>=1.28.1"]`** — Semgrep pins `mcp==1.23.3`,
+- **`override-dependencies = ["mcp>=1.28.1"]`** overrides Semgrep's
+  `mcp==1.23.3` pin,
   which carries known advisories. Warden uses Semgrep's CLI scanner and never
   its MCP server, so the pin is overridden to the patched release.
 
@@ -102,12 +103,12 @@ Commit `uv.lock` alongside any dependency change.
 `.github/workflows/ci.yml` runs on pushes to `main`, on pull requests, and on
 manual dispatch:
 
-- **`quality`** — the four checks above on Ubuntu with Python 3.11.
-- **`scan`** — runs Warden against this repository, gated on `quality` passing.
+- `quality` runs the four checks above on Ubuntu with Python 3.11.
+- `scan` runs Warden against this repository after `quality` passes.
 
 The `scan` job means the project scans itself: a change that introduces a High
-or Critical finding — including in a workflow file or the `Dockerfile` — will
-fail CI. See [Using Warden in CI](guides/ci-github-actions.md).
+or Critical finding will fail CI, including findings in workflow files or the
+`Dockerfile`. See [Using Warden in CI](guides/ci-github-actions.md).
 
 Actions are pinned to commit SHAs with the version in a trailing comment. When
 updating one, update both.
@@ -117,7 +118,8 @@ updating one, update both.
 - Public functions are typed; internal helpers are prefixed with `_`.
 - Data structures are frozen dataclasses or `TypedDict`s in `_models.py`, kept
   free of logic. A record that needs a derived accessor lives beside the code
-  that uses it instead — `Scanner` in `_scanners.py`, `Verdict` in `_summary.py`.
+  that uses it instead. `Scanner` lives in `_scanners.py`, and `Verdict` lives
+  in `_summary.py`.
 - `tooling.py` is the only module that runs subprocesses. A scanner's command
   line is built by its `Scanner` record; `tooling.run_scanner` is what runs it.
 - Adding a scanner means adding a `Scanner` record, its parser, and its command
@@ -129,7 +131,7 @@ updating one, update both.
 
 Documentation lives in `docs/`, organised by purpose: tutorial, how-to guides,
 reference, explanation. When adding a document, add it to the table in
-[`docs/README.md`](README.md) — that index is the map, and an unlisted file is
-an invisible one.
+[`docs/README.md`](README.md). Readers will not find an unlisted document from
+the documentation index.
 
 Verify any command you document by running it.

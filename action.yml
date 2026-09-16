@@ -1,5 +1,5 @@
 name: Warden Security Scan
-description: Run Warden (Trivy + Semgrep + Gitleaks + optional ZAP).
+description: Run Trivy, Semgrep, Gitleaks, and optional OWASP ZAP scans with Warden.
 
 inputs:
   url:

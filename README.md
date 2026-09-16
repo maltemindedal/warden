@@ -1,7 +1,5 @@
 # Warden
 
-**Four security scanners. One command. One answer.**
-
 Warden orchestrates Trivy, Semgrep, Gitleaks, and OWASP ZAP, merges their
 output into a single report, and exits non-zero when it finds anything Critical
 or High. Each of those tools has its own flags, output format, and severity
@@ -125,4 +123,4 @@ the quality gate (`ruff`, `ty`, `pytest`).
 
 ## License
 
-MIT — see [LICENSE](LICENSE).
+MIT. See [LICENSE](LICENSE).

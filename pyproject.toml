@@ -5,7 +5,7 @@ build-backend = "hatchling.build"
 [project]
 name = "warden"
 version = "0.1.0"
-description = "Security automation for development teams."
+description = "Run Trivy, Semgrep, Gitleaks, and OWASP ZAP with one report and exit code."
 readme = "README.md"
 license = { file = "LICENSE" }
 requires-python = ">=3.11"

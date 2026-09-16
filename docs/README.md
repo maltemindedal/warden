@@ -1,9 +1,9 @@
 # Warden documentation
 
-Every document in this directory, grouped by purpose. Start with
+This index groups the documentation by purpose. Start with
 [Getting started](getting-started.md) if you have never run Warden.
 
-## Tutorial — learning
+## Tutorial
 
 For newcomers working through a first success end to end.
 
@@ -11,7 +11,7 @@ For newcomers working through a first success end to end.
 | --- | --- |
 | [Getting started](getting-started.md) | Install Warden and scan your first project. Assumes no prior knowledge. |
 
-## How-to guides — tasks
+## How-to guides
 
 Goal-oriented recipes. Each assumes you already have Warden working.
 
@@ -22,7 +22,7 @@ Goal-oriented recipes. Each assumes you already have Warden working.
 | [Using Warden in CI](guides/ci-github-actions.md) | Wire the scan into GitHub Actions, in this repo or another one. |
 | [Troubleshooting](guides/troubleshooting.md) | Diagnose skipped tools, permission errors, and unexpected exit codes. |
 
-## Reference — lookup
+## Reference
 
 Exhaustive and factual. For readers who already know what they want.
 
@@ -32,7 +32,7 @@ Exhaustive and factual. For readers who already know what they want.
 | [Configuration](reference/configuration.md) | Every `.warden.yaml` key and environment variable, with types, defaults, and precedence. |
 | [Report format](reference/report-format.md) | The `security_audit.json` schema and how each tool's severities are normalised. |
 
-## Explanation — understanding
+## Explanation
 
 Background and rationale.
 

@@ -2,9 +2,9 @@
 
 A scan produces two kinds of output:
 
-- `.security_reports/` — each scanner's raw JSON, unmodified except for
-  pretty-printing
-- `security_audit.json` — the merged report described here
+- `.security_reports/` contains each scanner's raw JSON, unmodified except for
+  pretty-printing.
+- `security_audit.json` contains the merged report described here.
 
 ## Input files
 
@@ -61,7 +61,7 @@ Always present:
 | Field | Type | Meaning |
 | --- | --- | --- |
 | `tool` | string | `Trivy`, `Semgrep`, `Gitleaks`, or `ZAP`. |
-| `severity` | string | Normalised severity — see below. |
+| `severity` | string | Normalised severity. See below. |
 | `file` | string | File path, or for ZAP the affected URL. `Unknown` when the source report omits it. |
 | `description` | string | Human-readable summary. |
 
@@ -96,8 +96,8 @@ becomes `UNKNOWN`.
 
 Two per-tool rules are worth knowing:
 
-- **Semgrep** reports `ERROR` and `WARNING`. These become `HIGH` and `MEDIUM`
-  respectively — so a Semgrep `ERROR` finding will fail your build.
+- **Semgrep** reports `ERROR` and `WARNING`. These become `HIGH` and `MEDIUM`,
+  respectively. A Semgrep `ERROR` finding will fail your build.
 - **Gitleaks** findings are always assigned `CRITICAL`, regardless of what the
   rule was. Any detected secret fails the build.
 
@@ -126,5 +126,5 @@ than by tool name:
 | `ZAP` | ZAP |
 
 The breakdown column is populated for Critical and High only. Medium shows a
-count with no breakdown, and Low, Info, and Unknown are not shown as rows at all
-— they appear in `security_audit.json` but not in the table.
+count with no breakdown. Low, Info, and Unknown appear in
+`security_audit.json`, but not in the table.

@@ -1,10 +1,10 @@
-# Warden - Docker image (containerized runner)
+# Warden Docker image
 # Build:
 #   docker build -t warden:local .
 # Run (the image is unprivileged, so --user is required on Linux for the report
 # to be writable back into the bind-mounted project):
 #   docker run --rm --user "$(id -u):$(id -g)" -v "$(pwd):/src" warden:local
-# With DAST, which additionally needs the docker socket and its group:
+# DAST also needs the Docker socket and its group:
 #   docker run --rm --user "$(id -u):$(id -g)" \
 #     --group-add "$(getent group docker | cut -d: -f3)" \
 #     -v "$(pwd):/src" -v /var/run/docker.sock:/var/run/docker.sock \
@@ -22,7 +22,7 @@ ENV PYTHONUNBUFFERED=1 \
   UV_COMPILE_BYTECODE=1 \
   UV_PYTHON_DOWNLOADS=never
 
-# Base utilities + docker CLI (for optional ZAP runs)
+# Base utilities and the Docker CLI for optional ZAP scans
 RUN apt-get update \
  && apt-get install -y --no-install-recommends \
       bash \
@@ -38,7 +38,7 @@ RUN apt-get update \
 RUN curl -sfL https://raw.githubusercontent.com/aquasecurity/trivy/main/contrib/install.sh \
   | sh -s -- -b /usr/local/bin ${TRIVY_VERSION}
 
-# uv + Warden runtime dependencies
+# uv and Warden runtime dependencies
 RUN curl -LsSf https://astral.sh/uv/install.sh | sh \
  && ln -sf /root/.local/bin/uv /usr/local/bin/uv
 
@@ -73,8 +73,8 @@ ENV PATH="/opt/warden/.venv/bin:${PATH}"
 
 # Run as a non-root user. Callers are also expected to override the uid to match
 # the owner of the bind-mounted project (see action.yml), so every path the tools
-# write to at runtime must be usable by an arbitrary uid -- hence the sticky
-# world-writable state directory rather than a real home under /home.
+# write to at runtime must be usable by an arbitrary UID. The image therefore
+# uses a sticky, world-writable state directory instead of a home under /home.
 RUN useradd --no-create-home --uid 10001 --shell /usr/sbin/nologin warden \
  && mkdir -p /var/tmp/warden \
  && chmod 1777 /var/tmp/warden

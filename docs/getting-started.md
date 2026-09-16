@@ -14,23 +14,22 @@ one report with one exit code:
 | Trivy | Vulnerable dependencies and misconfigured infrastructure files |
 | Semgrep | Insecure code patterns (SAST) |
 | Gitleaks | Committed secrets |
-| OWASP ZAP | Vulnerabilities in a *running* web app (DAST) — optional |
+| OWASP ZAP | Optional DAST for vulnerabilities in a *running* web app |
 
-The first three read your files. ZAP is different: it needs a URL of a running
-application, so it only runs when you give it one.
+The first three read your files. ZAP needs the URL of a running application, so
+it only runs when you give it one.
 
 ## Prerequisites
 
 - **Python 3.11 or newer.** The installers download 3.11 for you.
-- **Docker.** Required by both installers, which exit if it is missing. Note
-  that Docker is only *used* for the optional ZAP scan — the other three tools
-  run natively.
+- **Docker.** Required by both installers, which exit if it is missing. Only the
+  optional ZAP scan uses Docker. The other three tools run natively.
 - **Git**, to clone the repository.
 
 You do not need to install Trivy, Semgrep, or Gitleaks yourself. The installer
 handles Trivy and Gitleaks; Semgrep arrives as a Python dependency.
 
-## Step 1 — Install
+## Step 1: Install
 
 Clone the repository and run the installer for your platform.
 
@@ -58,7 +57,7 @@ if it isn't already there.
 If the installer says it added a directory to your `PATH`, restart your terminal
 before continuing.
 
-## Step 2 — Confirm the install
+## Step 2: Confirm the install
 
 ```bash
 warden --help
@@ -75,7 +74,7 @@ Run the Warden security audit.
 If the command is not found, see
 [Troubleshooting](guides/troubleshooting.md#the-warden-command-is-not-found).
 
-## Step 3 — Run your first scan
+## Step 3: Run your first scan
 
 Change into any project directory and run:
 
@@ -104,9 +103,9 @@ Generated /path/to/your/project/security_audit.json with 4 issues.
 
 The first Semgrep run downloads its rule set, so it is slower than later runs.
 
-`[4/4] Skipping ZAP` is expected — you have not given it a URL yet.
+`[4/4] Skipping ZAP` is expected because you have not given it a URL yet.
 
-## Step 4 — Read the result
+## Step 4: Read the result
 
 Warden finishes with a summary table and a verdict:
 
@@ -136,7 +135,7 @@ Full details are in `security_audit.json` next to your project, and each tool's
 raw output is in `.security_reports/`. Warden adds `.security_reports/` to your
 `.gitignore` automatically so those files are not committed.
 
-## Step 5 — Add a DAST scan (optional)
+## Step 5: Add a DAST scan (optional)
 
 To also scan a *running* application, start it, then pass its URL:
 
@@ -148,8 +147,7 @@ This launches OWASP ZAP in a container, which is why Docker is a prerequisite.
 Warden rewrites `localhost` and `127.0.0.1` to `host.docker.internal` so the
 container can reach an app running on your machine.
 
-A full ZAP scan takes considerably longer than the static tools — expect
-minutes, not seconds.
+A full ZAP scan takes minutes rather than seconds.
 
 ## Where to go next
 

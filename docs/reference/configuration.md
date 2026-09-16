@@ -27,7 +27,7 @@ What it does **not** support: anchors, multi-line strings, nested mappings
 deeper than one level, inline `[a, b]` or `{a: b}` collections, or documents
 with `---` separators. Unrecognised top-level keys are parsed and then ignored.
 
-A file that cannot be read or parsed is treated as empty — Warden falls back to
+A file that cannot be read or parsed is treated as empty. Warden falls back to
 defaults rather than reporting an error. A malformed config therefore fails
 silently. Verify with `warden-config .` when in doubt.
 
@@ -137,9 +137,9 @@ tools:
 
 ## Environment variables
 
-Warden reads no environment variables for scanner selection or exclusions —
-those come only from the config file and flags. The variables below affect where
-the ZAP container mounts its output.
+Warden reads scanner selection and exclusions only from the config file and
+flags. The environment variables below control where the ZAP container mounts
+its output.
 
 | Variable | Read by | Effect |
 | --- | --- | --- |

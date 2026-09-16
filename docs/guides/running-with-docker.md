@@ -3,7 +3,7 @@
 The included `Dockerfile` bundles Warden with Trivy, Semgrep, and Gitleaks, so
 you can scan a project without installing any of them.
 
-No image is published to a registry — you build it locally.
+No image is published to a registry. Build it locally.
 
 ## Build the image
 
@@ -22,11 +22,11 @@ docker build -t warden:local \
   --build-arg GITLEAKS_VERSION=<version> .
 ```
 
-Take the values from the projects' own release pages —
+Take the values from the release pages for
 [Trivy](https://github.com/aquasecurity/trivy/releases) and
-[Gitleaks](https://github.com/gitleaks/gitleaks/releases) — without the leading
-`v`. This repository pins neither, so there is no known-good pair to copy;
-choose a release, build, and record what worked for you.
+[Gitleaks](https://github.com/gitleaks/gitleaks/releases), without the leading
+`v`. This repository pins neither tool, so there is no tested version pair to
+copy. Choose the releases, build the image, and record the versions you used.
 
 ## Scan a project
 
@@ -39,8 +39,7 @@ docker run --rm --user "$(id -u):$(id -g)" -v "$(pwd):/src" warden:local
 The report is written to `security_audit.json` in the mounted directory, owned
 by your user.
 
-Flags work exactly as they do natively — everything after the image name is
-passed through:
+Everything after the image name is passed to Warden, so the usual flags work:
 
 ```bash
 docker run --rm --user "$(id -u):$(id -g)" -v "$(pwd):/src" warden:local --help
@@ -60,9 +59,8 @@ PermissionError: [Errno 13] Permission denied: '/src/.security_reports/semgrep.j
 Passing `--user "$(id -u):$(id -g)"` runs the container as you, so the report
 lands with the right ownership.
 
-On Docker Desktop for macOS and Windows the bind mount ignores UNIX ownership,
-so the flag is unnecessary there — but it is harmless, so the commands above use
-it unconditionally.
+On Docker Desktop for macOS and Windows, the bind mount ignores UNIX ownership.
+The flag is unnecessary there but harmless, so the commands above always use it.
 
 Because the container may run as any UID, the image keeps its scanner caches and
 settings under `/var/tmp/warden` rather than a fixed home directory, and sets
@@ -72,8 +70,8 @@ different user.
 ## Add a DAST scan
 
 ZAP runs in its own container, so the Warden container needs to talk to the
-Docker daemon. That means mounting the socket — and, because the container is
-unprivileged, granting the socket's group:
+Docker daemon. Mount the socket and grant the unprivileged container access to
+the socket's group:
 
 ```bash
 docker run --rm \
@@ -133,5 +131,5 @@ precedence.
 Mounting `/var/run/docker.sock` grants the container effective root on the host,
 because anything that can talk to the daemon can start a privileged container.
 Only mount it when you need the DAST scan, and only for images you trust. The
-static scanners need no socket at all — the first command in this guide is the
-one to prefer.
+static scanners need no socket. Use the first command in this guide unless you
+need ZAP.

@@ -43,10 +43,10 @@ scanner never ran.
 
 Two causes:
 
-- **`... was not found on PATH.`** — the binary is missing. Re-run the installer,
+- **`... was not found on PATH.`** The binary is missing. Re-run the installer,
   or use the [Docker image](running-with-docker.md), which bundles all three
   static scanners.
-- **`... exited with status N.`** — the tool ran and failed. Its stderr is
+- **`... exited with status N.`** The tool ran and failed. Its stderr is
   suppressed for Semgrep and Gitleaks, so run the tool directly to see why.
 
 To confirm which tools actually contributed, check `tools_run`:
@@ -102,8 +102,8 @@ The unprivileged container user is not in the socket's group. Add it:
 
 ## Changes to `.warden.yaml` have no effect
 
-A config file that cannot be parsed is silently discarded and defaults are used
-— no error is printed. Check what Warden actually resolved:
+A config file that cannot be parsed is silently discarded and defaults are
+used. Warden prints no error. Check what it resolved:
 
 ```bash
 warden-config .
@@ -125,9 +125,9 @@ causes:
 ## Findings from `node_modules`, `.venv`, or `vendor`
 
 Warden scans everything under the project root by default, including installed
-dependencies. A checkout with dependencies installed can produce a large number
-of findings that are not about your code — Gitleaks in particular flags test
-fixtures and sample keys inside third-party packages.
+dependencies. A checkout with dependencies installed can produce many findings
+that are not about your code. Gitleaks, for example, flags test fixtures and
+sample keys inside third-party packages.
 
 Exclude those directories:
 
@@ -147,8 +147,8 @@ Trivy can time out walking very large directories:
 FATAL Fatal error run error: fs scan error: ... context deadline exceeded
 ```
 
-Exclude the directory it is struggling with — dependency and build output
-directories are the usual culprits.
+Exclude the directory it is struggling with. Dependency and build output
+directories are the usual causes.
 
 ## The first Semgrep run is slow
 

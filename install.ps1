@@ -1,4 +1,4 @@
-# install.ps1 - Setup script
+# Warden setup script
 Write-Host "Installing Warden..." -ForegroundColor Cyan
 
 $UvBinPath = Join-Path $HOME ".local\bin"

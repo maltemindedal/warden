@@ -27,7 +27,7 @@ usage: warden [-h] [-u URL] [--project-root PROJECT_ROOT] [--config CONFIG]
 | `-u`, `--url`, `-Url`, `--Url` | `""` | DAST target URL. Enables the ZAP stage. Overrides `target_url` from the config file. |
 | `--project-root` | `.` | Directory to scan. Resolved to an absolute path; the report is written here. |
 | `--config` | `<project-root>/.warden.yaml` | Path to an alternate config file. |
-| `-h`, `--help` | — | Print usage and exit. |
+| `-h`, `--help` | Not applicable | Print usage and exit. |
 
 The `-Url` and `--Url` spellings exist so the same invocation works in
 PowerShell habits and POSIX shells. All four spellings set the same value.
@@ -60,7 +60,7 @@ the CLI or the config file.
 
 A scanner that fails to run does **not** by itself cause a non-zero exit. The
 failure is printed as a warning and the run continues with whatever reports were
-produced — so a scan can report `PASS` while a tool was silently unavailable.
+produced. A scan can therefore report `PASS` while a tool was unavailable.
 See [Troubleshooting](../guides/troubleshooting.md#a-tool-was-skipped-or-warned-but-the-scan-still-passed).
 
 ### Per-tool exit-code handling
@@ -109,8 +109,8 @@ $ warden-config .
 
 ## `warden-aggregate`
 
-Merges scanner JSON reports that already exist into a single report. This is the
-second half of `warden`, exposed separately — it runs no scanners.
+Merges existing scanner JSON reports into a single report without running any
+scanners.
 
 ```
 usage: warden-aggregate [-h] report_dir output_file

@@ -34,7 +34,7 @@ export PATH="$UV_BIN_DIR:$PATH"
 
 # Where the Linux scanner binaries go. Prefer the system directory, escalate if
 # we cannot write it, and fall back to the user's own bin directory when there
-# is no sudo either -- an unprivileged install must still work.
+# is no sudo either. This keeps an unprivileged install working.
 BIN_DIR="/usr/local/bin"
 SUDO=""
 if [ "$OS_TYPE" = "Linux" ] && [ ! -w "$BIN_DIR" ]; then
@@ -116,8 +116,8 @@ echo -e "${CYAN}[*] Installing Warden with uv...${NC}"
 uv python install 3.11
 uv tool install --force --python 3.11 -e "$SCRIPT_DIR"
 
-# These are unset in a non-interactive shell, so every read needs a default --
-# `set -u` would otherwise abort the script before it finishes.
+# These are unset in a non-interactive shell, so every read needs a default.
+# Without one, `set -u` would abort the script before it finishes.
 if [ -n "${ZSH_VERSION:-}" ] || [ "${SHELL:-}" = "/bin/zsh" ]; then
 	SHELL_RC="$HOME/.zshrc"
 elif [ -n "${BASH_VERSION:-}" ] || [ "${SHELL:-}" = "/bin/bash" ]; then
@@ -129,7 +129,7 @@ fi
 if [[ ":$PATH:" != *":$UV_BIN_DIR:"* ]]; then
 	echo -e "${CYAN}[*] Adding '$UV_BIN_DIR' to your PATH...${NC}"
 	echo "" >> "$SHELL_RC"
-	echo "# Warden / uv tools" >> "$SHELL_RC"
+	echo "# Warden and uv tools" >> "$SHELL_RC"
 	echo "export PATH=\"$UV_BIN_DIR:\$PATH\"" >> "$SHELL_RC"
 	echo -e "${GREEN}Added to $SHELL_RC${NC}"
 	echo -e "${YELLOW}Restart your terminal or run: source $SHELL_RC${NC}"

@@ -42,13 +42,14 @@ warden-config .
 ```
 
 Each entry is forwarded to all three static scanners, but they interpret
-exclusions differently — Trivy takes directory paths, while Semgrep and Gitleaks
+exclusions differently. Trivy takes directory paths, while Semgrep and Gitleaks
 take patterns. If something is still being scanned after you excluded it, try
 both a bare name (`node_modules`) and a trailing-slash form (`node_modules/`).
 
-Installed dependency directories are a common source of false positives: a
-`.venv/` or `node_modules/` full of third-party code will generate findings that
-are not about your project. Excluding them is usually the right call.
+Installed dependency directories often produce false positives. A `.venv/` or
+`node_modules/` full of third-party code will generate findings that are not
+about your project. Exclude these directories unless you intend to scan their
+contents.
 
 ## Turn a tool off
 
@@ -75,10 +76,10 @@ target_url: "http://localhost:3000"
 `warden` now runs ZAP whenever that app is up. A `--url` flag on the command
 line takes precedence.
 
-> **Careful:** setting `tools.zap: false` blanks the target URL completely, and
-> it does so *after* the CLI flag is applied. With `zap: false` in your config,
-> even `warden --url http://localhost:3000` will skip ZAP. If a DAST scan is
-> being skipped unexpectedly, check this first.
+> Setting `tools.zap: false` clears the target URL after the CLI flag is applied.
+> With `zap: false` in your config, even
+> `warden --url http://localhost:3000` will skip ZAP. Check this setting if
+> Warden skips a DAST scan unexpectedly.
 
 ## A worked example
 
@@ -118,19 +119,18 @@ warden --config /path/to/shared.warden.yaml
 ```
 
 The file is read from that path instead of `<project-root>/.warden.yaml`. The
-project root itself is unchanged — use `--project-root` to scan somewhere else:
+project root itself is unchanged. Use `--project-root` to scan somewhere else:
 
 ```bash
 warden --project-root /path/to/project --config /path/to/shared.warden.yaml
 ```
 
-## Keep in mind: the parser is not real YAML
+## Parser limitations
 
 `.warden.yaml` is read by a small hand-written parser, not a YAML library. It
 handles top-level scalars, a `-` list under `exclude_dirs`, a one-level mapping
-under `tools`, and `#` comments. Anything more elaborate — anchors, nested
-mappings, inline `[a, b]` collections — is not supported and will be ignored
-rather than rejected.
+under `tools`, and `#` comments. It ignores unsupported YAML syntax, including
+anchors, nested mappings, and inline `[a, b]` collections.
 
 This is why `warden-config .` is the reliable way to check your work. See the
 [format notes](../reference/configuration.md#the-config-file-format-is-a-yaml-subset)

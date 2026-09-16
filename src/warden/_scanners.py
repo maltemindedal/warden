@@ -199,7 +199,8 @@ ZAP: Final[Scanner] = Scanner(
 SCANNERS: Final[tuple[Scanner, ...]] = (TRIVY, SEMGREP, GITLEAKS, ZAP)
 
 # The summary breakdown reads categories in their own order, which is deliberately not
-# the stage order -- hence `summary_order` rather than a second hand-written list.
+# the stage order. Each record therefore has `summary_order` instead of relying on a
+# second hand-written list.
 CATEGORY_ORDER: Final[tuple[str, ...]] = tuple(
     dict.fromkeys(scanner.category for scanner in sorted(SCANNERS, key=lambda s: s.summary_order))
 )

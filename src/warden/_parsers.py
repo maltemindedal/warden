@@ -62,7 +62,7 @@ def _build_trivy_finding(vulnerability: Mapping[str, object], target: str) -> Fi
         tool="Trivy",
         severity=normalize_severity(vulnerability.get("Severity")),
         file=target,
-        description=f"{package_name} {installed_version} - {_trivy_title(vulnerability)}",
+        description=f"{package_name} {installed_version}: {_trivy_title(vulnerability)}",
         fix=get_string(vulnerability, "FixedVersion") or "No fix available",
     )
 
