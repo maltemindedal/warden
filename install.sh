@@ -30,6 +30,9 @@ if ! command -v uv >/dev/null 2>&1; then
 	curl -LsSf https://astral.sh/uv/install.sh | sh
 fi
 
+# The user's PATH as it stood, before uv's directory is added for this script's own use below.
+# The check at the end has to look at this one, or it can never find the directory missing.
+CALLER_PATH="$PATH"
 export PATH="$UV_BIN_DIR:$PATH"
 
 # Where the Linux scanner binaries go. Prefer the system directory, escalate if
@@ -118,7 +121,8 @@ uv tool install --force --python 3.11 -e "$SCRIPT_DIR"
 
 # These are unset in a non-interactive shell, so every read needs a default.
 # Without one, `set -u` would abort the script before it finishes.
-if [ -n "${ZSH_VERSION:-}" ] || [ "${SHELL:-}" = "/bin/zsh" ]; then
+LOGIN_SHELL="${SHELL:-}"
+if [ -n "${ZSH_VERSION:-}" ] || [ "${LOGIN_SHELL##*/}" = "zsh" ]; then
 	SHELL_RC="$HOME/.zshrc"
 elif [ -n "${BASH_VERSION:-}" ] || [ "${SHELL:-}" = "/bin/bash" ]; then
 	SHELL_RC="$HOME/.bashrc"
@@ -126,15 +130,28 @@ else
 	SHELL_RC="$HOME/.profile"
 fi
 
-if [[ ":$PATH:" != *":$UV_BIN_DIR:"* ]]; then
-	echo -e "${CYAN}[*] Adding '$UV_BIN_DIR' to your PATH...${NC}"
-	echo "" >> "$SHELL_RC"
-	echo "# Warden and uv tools" >> "$SHELL_RC"
-	echo "export PATH=\"$UV_BIN_DIR:\$PATH\"" >> "$SHELL_RC"
-	echo -e "${GREEN}Added to $SHELL_RC${NC}"
+# What counts as the profile already putting the directory on PATH: the line uv's own installer
+# writes (`. "$HOME/.local/bin/env"`, late-bound) or an `export PATH=` line, like the one below.
+# A comment or an unrelated command that merely mentions the directory does not.
+PROFILE_PATH_LINE='^[[:space:]]*((\.|source)[[:space:]].*\.local/bin/env|export[[:space:]]+PATH=.*\.local/bin)'
+
+if [[ ":$CALLER_PATH:" == *":$UV_BIN_DIR:"* ]]; then
+	echo -e "${GREEN}uv tool bin directory is already on PATH.${NC}"
+elif grep -qsE "$PROFILE_PATH_LINE" "$SHELL_RC"; then
+	echo -e "${YELLOW}$SHELL_RC already adds '$UV_BIN_DIR' to your PATH.${NC}"
 	echo -e "${YELLOW}Restart your terminal or run: source $SHELL_RC${NC}"
 else
-	echo -e "${GREEN}uv tool bin directory is already on PATH.${NC}"
+	echo -e "${CYAN}[*] Adding '$UV_BIN_DIR' to your PATH...${NC}"
+	if {
+		echo ""
+		echo "# Warden and uv tools"
+		echo "export PATH=\"$UV_BIN_DIR:\$PATH\""
+	} >> "$SHELL_RC"; then
+		echo -e "${GREEN}Added to $SHELL_RC${NC}"
+		echo -e "${YELLOW}Restart your terminal or run: source $SHELL_RC${NC}"
+	else
+		echo -e "${YELLOW}Could not write to $SHELL_RC. Add '$UV_BIN_DIR' to your PATH yourself.${NC}"
+	fi
 fi
 
 echo ""

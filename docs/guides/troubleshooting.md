@@ -5,7 +5,9 @@ Symptoms and their causes, in rough order of how often they come up.
 ## The `warden` command is not found
 
 The installer puts the executable in `~/.local/bin` and appends that directory
-to your shell profile. A shell started before the install will not have it.
+to your shell profile. A shell started before the install will not have it. If
+the installer could not write the profile it says so; add `~/.local/bin` to your
+`PATH` yourself.
 
 Restart your terminal, or source the profile the installer edited:
 

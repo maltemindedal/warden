@@ -54,8 +54,8 @@ you don't have it, installs Trivy and Gitleaks if they are missing, then
 installs Warden itself as a uv tool. It also adds `~/.local/bin` to your `PATH`
 if it isn't already there.
 
-If the installer says it added a directory to your `PATH`, restart your terminal
-before continuing.
+If the installer says it added a directory to your `PATH`, or that your shell
+profile already does, restart your terminal before continuing.
 
 ## Step 2: Confirm the install
 
