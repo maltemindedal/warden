@@ -1,7 +1,9 @@
 from __future__ import annotations
 
+import io
 import json
 import shutil
+import sys
 from pathlib import Path
 
 import pytest
@@ -419,3 +421,25 @@ def test_strict_holds_a_scanner_that_timed_out_against_the_run(tmp_path: Path) -
     )
 
     assert _strict(tmp_path, runner, "--timeout", "5") == cli.EXIT_INCOMPLETE
+
+
+@pytest.mark.parametrize("encoding", ["cp1252", "ascii"])
+def test_text_the_console_cannot_encode_is_printed_escaped_not_a_traceback(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, encoding: str
+) -> None:
+    """A stray line in `.warden.yaml` is echoed in a warning; on a redirected Windows stdout
+    a character outside the code page used to raise UnicodeEncodeError after the setup."""
+    (tmp_path / ".warden.yaml").write_text(
+        DISABLE_EVERY_TOOL + "\u65e5\u672c\u8a9e\n", encoding="utf-8"
+    )
+    raw = io.BytesIO()
+    stream = io.TextIOWrapper(raw, encoding=encoding, write_through=True)
+    monkeypatch.setattr(sys, "stdout", stream)
+
+    exit_code = cli.main(["--project-root", str(tmp_path)], runner=RecordingRunner())
+
+    output = raw.getvalue().decode(encoding)
+    assert exit_code == 0
+    assert "Warning: .warden.yaml: line" in output
+    assert "\\u65e5\\u672c\\u8a9e" in output
+    assert "AUDIT COMPLETE!" in output

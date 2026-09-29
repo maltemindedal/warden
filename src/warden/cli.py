@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import argparse
+import io
 import sys
 from dataclasses import dataclass, replace
 from pathlib import Path
@@ -217,9 +218,18 @@ def run_audit(options: CliOptions, *, runner: tooling.CommandRunner) -> int:
     return 0
 
 
+def _print_unencodable_text_escaped() -> None:
+    """Warden echoes text the project supplied (a config warning, a URL), and a console that
+    cannot encode it (a Windows code page on a redirected stdout) must not turn that into a
+    traceback: print it as `\\uXXXX` instead, as Python already does for stderr."""
+    if isinstance(sys.stdout, io.TextIOWrapper):
+        sys.stdout.reconfigure(errors="backslashreplace")
+
+
 def main(
     argv: list[str] | None = None,
     *,
     runner: tooling.CommandRunner = tooling.run_subprocess,
 ) -> int:
+    _print_unencodable_text_escaped()
     return run_audit(_parse_args(argv), runner=runner)
