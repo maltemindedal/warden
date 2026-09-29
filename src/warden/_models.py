@@ -59,6 +59,8 @@ class ResolvedConfig:
     exclude_dirs: list[str]
     enabled_tools: frozenset[str]
     """The scanner keys left enabled after `.warden.yaml` has been applied."""
+    warnings: tuple[str, ...] = ()
+    """Things worth telling the user about how the configuration was resolved."""
 
 
 @dataclass(slots=True, frozen=True)

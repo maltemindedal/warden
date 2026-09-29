@@ -387,3 +387,61 @@ def test_a_config_that_is_not_a_regular_file_is_treated_as_absent_without_being_
 
     assert completed.returncode == 0
     assert json.loads(completed.stdout)["exclude_dirs"] == []
+
+
+def _project_with_target_url(tmp_path: Path) -> None:
+    (tmp_path / ".warden.yaml").write_text('target_url: "http://app.example"\n', encoding="utf-8")
+
+
+def test_target_url_from_the_projects_own_config_is_ignored_on_a_ci_runner(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """On a runner the file can come from a pull request, and the URL starts an active scan."""
+    _project_with_target_url(tmp_path)
+    monkeypatch.setenv("GITHUB_WORKSPACE", str(tmp_path))
+
+    resolved = resolve_config(project_root=tmp_path, cli_url="")
+
+    assert resolved.url == ""
+    assert len(resolved.warnings) == 1
+    assert "target_url" in resolved.warnings[0]
+    assert "--url" in resolved.warnings[0]
+
+
+def test_an_explicit_url_or_config_still_sets_the_target_on_a_ci_runner(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    _project_with_target_url(tmp_path)
+    monkeypatch.setenv("GITHUB_WORKSPACE", str(tmp_path))
+    outside = tmp_path / "outside.yaml"
+    outside.write_text('target_url: "http://trusted.example"\n', encoding="utf-8")
+
+    from_flag = resolve_config(project_root=tmp_path, cli_url="http://flag.example")
+    from_explicit_config = resolve_config(project_root=tmp_path, cli_url="", config_path=outside)
+
+    assert (from_flag.url, from_flag.warnings) == ("http://flag.example", ())
+    assert (from_explicit_config.url, from_explicit_config.warnings) == (
+        "http://trusted.example",
+        (),
+    )
+
+
+def test_target_url_is_read_from_the_projects_config_off_a_ci_runner(tmp_path: Path) -> None:
+    _project_with_target_url(tmp_path)
+
+    resolved = resolve_config(project_root=tmp_path, cli_url="")
+
+    assert (resolved.url, resolved.warnings) == ("http://app.example", ())
+
+
+def test_warden_config_prints_its_warnings_to_stderr_and_keeps_stdout_json(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: CaptureFixture[str]
+) -> None:
+    _project_with_target_url(tmp_path)
+    monkeypatch.setenv("GITHUB_WORKSPACE", str(tmp_path))
+
+    assert main([str(tmp_path)]) == 0
+
+    captured = capsys.readouterr()
+    assert json.loads(captured.out)["url"] == ""
+    assert "Warning: target_url" in captured.err

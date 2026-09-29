@@ -68,7 +68,9 @@ To enable DAST, add a `url`:
 ```
 
 Start the target application in an earlier step; the action does not start it
-for you.
+for you. A `target_url` in the repository's own `.warden.yaml` is **not** used on a
+runner (it could come from a pull request, and it starts an active scan): the
+`url` input is the only way to turn DAST on.
 
 ### Action inputs
 

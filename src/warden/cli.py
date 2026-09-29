@@ -132,6 +132,8 @@ def run_audit(options: CliOptions, *, runner: tooling.CommandRunner) -> int:
 
     print("STARTING SECURITY AUDIT")
     print(f"   Target: {options.project_root}")
+    for warning in resolved.warnings:
+        print(f"Warning: {warning}")
     if resolved.url:
         problem = url_problem(resolved.url)
         if problem is None:

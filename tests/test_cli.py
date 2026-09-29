@@ -240,3 +240,18 @@ def test_a_usable_dast_url_is_announced_and_scanned(
 
     assert "   DAST URL: https://example.com" in capsys.readouterr().out
     assert _zap_target(runner) == "https://example.com"
+
+
+def test_the_cli_prints_what_the_config_warned_about(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: CaptureFixture[str]
+) -> None:
+    (tmp_path / ".warden.yaml").write_text('target_url: "http://app.example"\n', encoding="utf-8")
+    monkeypatch.setenv("GITHUB_WORKSPACE", str(tmp_path))
+    runner = RecordingRunner(report_text="{}")
+
+    exit_code = cli.main(["--project-root", str(tmp_path)], runner=runner)
+
+    output = capsys.readouterr().out
+    assert exit_code == 0
+    assert "Warning: target_url in .warden.yaml is ignored" in output
+    assert not [command for command in runner.commands if "zap-full-scan.py" in command.args]

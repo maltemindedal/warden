@@ -57,6 +57,12 @@ target_url: "http://localhost:3000"
 
 Overridden by the `--url` flag.
 
+**On a CI runner it is ignored.** When `GITHUB_WORKSPACE` is set (GitHub Actions
+sets it on every step), a `target_url` in the project's own `.warden.yaml` is not
+used, because that file can be changed by whoever opens a pull request and the
+URL starts an *active* scan. Warden prints a warning; pass `--url` (or the
+action's `url` input) to scan. A file given with `--config` is not affected.
+
 ### `exclude_dirs`
 
 | | |
@@ -157,7 +163,7 @@ its output.
 | --- | --- | --- |
 | `WARDEN_HOST_REPORT_DIR` | ZAP stage | Absolute host path to mount as ZAP's working directory. Highest precedence. |
 | `WARDEN_HOST_WORKSPACE` | ZAP stage | Host path to the project; `.security_reports` under it is mounted. |
-| `GITHUB_WORKSPACE` | ZAP stage | Same as above. Set automatically by GitHub Actions. |
+| `GITHUB_WORKSPACE` | ZAP stage | Same as above. Set automatically by GitHub Actions. Its presence also stops `target_url` in the project's `.warden.yaml` from being used. |
 
 These exist because ZAP runs in a sibling container. When Warden is itself
 running inside a container, the report path it sees is a container path, which

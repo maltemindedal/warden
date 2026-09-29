@@ -2,6 +2,8 @@ from __future__ import annotations
 
 import argparse
 import json
+import os
+import sys
 import textwrap
 from pathlib import Path
 from typing import cast
@@ -227,7 +229,18 @@ def resolve_config(
     except (OSError, UnicodeDecodeError, ValueError):
         raw = {}
 
-    resolved_url = cli_url.strip() or _resolve_target_url(raw).strip()
+    warnings: list[str] = []
+    resolved_url = cli_url.strip()
+    if not resolved_url:
+        resolved_url = _resolve_target_url(raw).strip()
+        # On a CI runner the project's own `.warden.yaml` can be changed by whoever opens a pull
+        # request, and `target_url` starts an active scan against whatever it names.
+        if resolved_url and config_path is None and os.environ.get("GITHUB_WORKSPACE"):
+            warnings.append(
+                f"target_url in {CONFIG_FILENAME} is ignored because GITHUB_WORKSPACE is set "
+                "(the file can come from a pull request): pass --url to scan it."
+            )
+            resolved_url = ""
     exclude_dirs = _extract_exclude_dirs(raw.get("exclude_dirs"))
     enabled_tools = _extract_enabled_tools(raw.get("tools"))
 
@@ -235,7 +248,12 @@ def resolve_config(
     if not any(scanner.requires_url and scanner.key in enabled_tools for scanner in SCANNERS):
         resolved_url = ""
 
-    return ResolvedConfig(url=resolved_url, exclude_dirs=exclude_dirs, enabled_tools=enabled_tools)
+    return ResolvedConfig(
+        url=resolved_url,
+        exclude_dirs=exclude_dirs,
+        enabled_tools=enabled_tools,
+        warnings=tuple(warnings),
+    )
 
 
 def _parse_args(argv: list[str] | None = None) -> CliOptions:
@@ -264,6 +282,8 @@ def main(argv: list[str] | None = None) -> int:
         config_path=options.config_path,
     )
 
+    for warning in resolved.warnings:
+        print(f"Warning: {warning}", file=sys.stderr)
     print(
         json.dumps(
             {

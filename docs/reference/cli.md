@@ -24,7 +24,7 @@ usage: warden [-h] [-u URL] [--project-root PROJECT_ROOT] [--config CONFIG]
 
 | Flag | Default | Effect |
 | --- | --- | --- |
-| `-u`, `--url`, `-Url`, `--Url` | `""` | DAST target URL. Enables the ZAP stage. Overrides `target_url` from the config file. |
+| `-u`, `--url`, `-Url`, `--Url` | `""` | DAST target URL. Enables the ZAP stage. Overrides `target_url` from the config file, which is not used at all when `GITHUB_WORKSPACE` is set. |
 | `--project-root` | `.` | Directory to scan. Must be an existing directory. Resolved to an absolute path; the report is written here. |
 | `--config` | `<project-root>/.warden.yaml` | Path to an alternate config file. |
 | `-h`, `--help` | Not applicable | Print usage and exit. |
