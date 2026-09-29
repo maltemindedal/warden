@@ -13,20 +13,32 @@ From a clone of this repository:
 docker build -t warden:local .
 ```
 
-The build pulls Trivy and Gitleaks from their upstream release channels. Both
-default to the latest release. To pin them instead, pass the version you want:
+The image pins what it downloads. uv comes from a build stage pinned by version and
+digest (`ghcr.io/astral-sh/uv`), and Trivy and Gitleaks are fetched at a fixed
+version whose release archive must match a SHA-256 recorded in the `Dockerfile`, one
+per architecture (amd64 and arm64). A download that does not match fails the build.
+Nothing is piped into a shell, and updating means editing the `Dockerfile` (the
+`uv` stage is also tracked by Dependabot, see `.github/dependabot.yml`).
+
+To build with other scanner versions, pass the version **and** its digests. Both
+versions are given without a leading `v`, and the digests are the archive's line in
+the release's checksums file (`trivy_<version>_Linux-64bit.tar.gz`,
+`trivy_<version>_Linux-ARM64.tar.gz`, `gitleaks_<version>_linux_x64.tar.gz`,
+`gitleaks_<version>_linux_arm64.tar.gz`):
 
 ```bash
 docker build -t warden:local \
   --build-arg TRIVY_VERSION=<version> \
-  --build-arg GITLEAKS_VERSION=<version> .
+  --build-arg TRIVY_SHA256_AMD64=<digest> --build-arg TRIVY_SHA256_ARM64=<digest> \
+  --build-arg GITLEAKS_VERSION=<version> \
+  --build-arg GITLEAKS_SHA256_AMD64=<digest> --build-arg GITLEAKS_SHA256_ARM64=<digest> .
 ```
 
-Take the values from the release pages for
+Take them from the release pages for
 [Trivy](https://github.com/aquasecurity/trivy/releases) and
-[Gitleaks](https://github.com/gitleaks/gitleaks/releases), without the leading
-`v`. This repository pins neither tool, so there is no tested version pair to
-copy. Choose the releases, build the image, and record the versions you used.
+[Gitleaks](https://github.com/gitleaks/gitleaks/releases). A checksum fetched from
+the release it belongs to proves the download is intact, not that the release is
+trustworthy, which is why the digests are committed rather than fetched.
 
 ## Scan a project
 
