@@ -91,10 +91,14 @@ Two constraints in `[tool.uv]` are deliberate and will affect you:
   published in the last seven days are not resolvable, so a new release
   cannot be pulled in silently. If a lock fails on a very recent version, this is
   why; wait for it to age out rather than removing the setting.
-- **`override-dependencies = ["mcp>=1.28.1"]`** overrides Semgrep's
-  `mcp==1.23.3` pin,
-  which carries known advisories. Warden uses Semgrep's CLI scanner and never
-  its MCP server, so the pin is overridden to the patched release.
+- **`override-dependencies = ["mcp>=1.28.1,<2"]`** overrides the
+  `mcp==1.23.3` pin of Semgrep 1.146 to 1.172 (older releases pin older mcp
+  releases or none), which carries known advisories. Warden uses Semgrep's CLI scanner and never its MCP server, so the
+  pin is overridden to a patched release. The cap at 2 is needed because mcp 2.x
+  renamed the modules Semgrep imports, which makes `semgrep` fail at startup.
+  From Semgrep 1.173 the pin is `mcp==1.29.0` (patched), so with such a Semgrep
+  locked the override only serves as the cap, and a relock can move mcp past that
+  pin: use `uv lock --upgrade-package mcp==<the pin>` to keep them in step.
 
 Commit `uv.lock` alongside any dependency change.
 

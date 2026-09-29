@@ -26,10 +26,14 @@ dev = ["pytest>=9.0.3,<10", "pytest-cov>=6.1,<7", "ruff>=0.11.6,<0.12", "ty>=0.0
 # Relative rather than a fixed date, so the window rolls without maintenance.
 exclude-newer = "7 days"
 default-groups = ["dev"]
-# semgrep pins mcp==1.23.3, which carries GHSA-hvrp-rf83-w775, GHSA-jpw9-pfvf-9f58
-# and GHSA-vj7q-gjh5-988w. We only use semgrep's CLI scanner, never its MCP server,
-# so overriding the pin to the patched release is safe.
-override-dependencies = ["mcp>=1.28.1"]
+# semgrep 1.146 to 1.172 pin mcp==1.23.3 (older releases pin older mcp releases or none), which
+# carries GHSA-hvrp-rf83-w775, GHSA-jpw9-pfvf-9f58 and GHSA-vj7q-gjh5-988w. We only use semgrep's
+# CLI scanner, never its MCP server, so the pin is overridden to a patched release. Capped below 2 because mcp 2.x
+# renamed the modules semgrep imports, so `semgrep` fails at startup on a 2.x resolve. From
+# semgrep 1.173 the pin is mcp==1.29.0 (patched), so with such a semgrep locked the override
+# only serves as the cap, and a relock can move mcp past that pin: use
+# `uv lock --upgrade-package mcp==<the pin>` to keep them in step.
+override-dependencies = ["mcp>=1.28.1,<2"]
 
 [tool.hatch.build.targets.wheel]
 packages = ["src/warden"]
