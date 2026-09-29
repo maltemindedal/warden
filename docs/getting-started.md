@@ -144,8 +144,8 @@ warden --url "http://localhost:3000"
 ```
 
 This launches OWASP ZAP in a container, which is why Docker is a prerequisite.
-Warden rewrites `localhost` and `127.0.0.1` to `host.docker.internal` so the
-container can reach an app running on your machine.
+Warden rewrites a URL host of `localhost` or `127.0.0.1` to
+`host.docker.internal` so the container can reach an app running on your machine.
 
 A full ZAP scan takes minutes rather than seconds.
 

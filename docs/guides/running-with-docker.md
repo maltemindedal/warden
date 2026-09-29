@@ -94,9 +94,9 @@ socket instead:
 
 ### Reaching the target application
 
-Warden rewrites `localhost` and `127.0.0.1` to `host.docker.internal`
-automatically, so `--url http://localhost:3000` usually works from inside a
-container.
+Warden rewrites a URL host of `localhost` or `127.0.0.1` to
+`host.docker.internal` automatically, so `--url http://localhost:3000` usually
+works from inside a container.
 
 On Linux, `host.docker.internal` is not resolvable by default. Either target a
 service running in Docker by its container or network address, or add:

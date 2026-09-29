@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import os
+import re
 from collections.abc import Callable
 from dataclasses import dataclass
 from pathlib import Path
@@ -39,13 +40,30 @@ class Command:
 CommandBuilder = Callable[[ScanRequest], Command]
 
 
+# The pieces of a URL, found without backtracking: an optional scheme and `//`, then the
+# authority up to the first `/`, `?` or `#`, whose host follows its last `@`.
+_URL_LEAD: Final = re.compile(r"(?:[A-Za-z][A-Za-z0-9+.-]*:)?//")
+_AUTHORITY_END: Final = re.compile(r"[/?#]")
+_LOOPBACK_HOST: Final = re.compile(r"(?:localhost|127\.0\.0\.1)(?P<dot>\.?)(?=:|\Z)")
+
+
 def rewrite_zap_target(url: str) -> str:
-    """ZAP runs in its own container, where the host's loopback is not the host."""
-    if "localhost" in url or "127.0.0.1" in url:
-        return url.replace("localhost", "host.docker.internal").replace(
-            "127.0.0.1", "host.docker.internal"
-        )
-    return url
+    """ZAP runs in its own container, where the host's loopback is not the host.
+
+    Only the URL's host is rewritten, and only when it is exactly `localhost` or `127.0.0.1`: the
+    same text in the user name, path, query or fragment is left alone, and so is everything
+    else in the URL. It is linear in the length of the URL, because a project controls it.
+    """
+    lead = _URL_LEAD.match(url)
+    start = lead.end() if lead else 0
+    boundary = _AUTHORITY_END.search(url, start)
+    end = boundary.start() if boundary else len(url)
+    last_at = url.rfind("@", start, end)
+    host_start = last_at + 1 if last_at != -1 else start
+    host = _LOOPBACK_HOST.match(url, host_start, end)
+    if host is None:
+        return url
+    return f"{url[:host_start]}host.docker.internal{host['dot']}{url[host.end() :]}"
 
 
 def resolve_host_report_dir(report_dir: str | Path) -> Path:

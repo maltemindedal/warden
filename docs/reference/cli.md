@@ -37,9 +37,9 @@ PowerShell habits and POSIX shells. All four spellings set the same value.
 - **A URL alone is not enough to run ZAP.** If `tools.zap` is `false` in the
   config, the resolved URL is discarded and ZAP is skipped, even when `--url` is
   passed explicitly. See [Configuration](configuration.md#interaction-between-target_url-and-toolszap).
-- `localhost` and `127.0.0.1` in the URL are rewritten to
+- A URL host of `localhost` or `127.0.0.1` is rewritten to
   `host.docker.internal` before ZAP runs, so the ZAP container can reach an app
-  on the host.
+  on the host. Only the host is rewritten, not the same text in the path or query.
 - The report directory `.security_reports/` is created inside the project root
   if absent, and `.security_reports/` is appended to the project's `.gitignore`
   if that file exists and does not already list it.
