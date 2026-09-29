@@ -34,7 +34,7 @@ All under `src/warden/`.
 | --- | --- |
 | `cli.py` | Entry point. Parses arguments, sequences the stages, prints progress, returns the exit code. |
 | `config.py` | Parses `.warden.yaml` and resolves it against CLI arguments into a `ResolvedConfig`. Also the `warden-config` entry point. |
-| `tooling.py` | Prepares the report directory and runs a scanner's command line through a `CommandRunner`. The only module that touches subprocesses. |
+| `tooling.py` | Prepares the report directory, runs a scanner's command line through a `CommandRunner`, and filters a report against `exclude_dirs` for a scanner that cannot skip paths. The only module that touches subprocesses. |
 | `aggregate.py` | Assembles the report from the parsed findings and writes it. Also the `warden-aggregate` entry point. |
 | `_parsers.py` | Turns each tool's JSON into `Finding` records and normalises severities. |
 | `_summary.py` | Creates a `Verdict` with counts, a category breakdown, and the build result, then prints its terminal table. |
@@ -57,15 +57,21 @@ Those parts moved to separate modules when they began changing independently.
 ## Data flow through a scan
 
 1. **Resolve configuration.** `config.resolve_config` reads `.warden.yaml` if
-   present and merges it with CLI arguments. A missing or unparsable file yields
-   defaults.
+   present and merges it with CLI arguments. A missing or
+   unparsable file yields defaults, and so does a `.warden.yaml` in the project
+   that is not a regular file (a named pipe, say).
 2. **Prepare the report directory.** `.security_reports/` is created in the
    project root, and appended to `.gitignore` if that file exists and does not
-   already list it. Any report left by a previous run is deleted, so a tool that
-   is now disabled or that crashes cannot contribute stale findings.
+   already list it (best effort: a `.gitignore` that cannot be read, written or
+   is not text produces a warning, not a failure). Any report left by a previous
+   run is deleted, so a tool that is now disabled or that crashes cannot
+   contribute stale findings. A symlink
+   (or, for the report, a named pipe) at any of these paths is replaced or left
+   alone, never followed, because the project being scanned is not trusted.
 3. **Run each enabled tool.** Each writes its native JSON into the report
-   directory. A tool that is missing or fails produces a warning; the sequence
-   continues regardless.
+   directory. Gitleaks has no flag for skipping paths, so `tooling` then drops
+   the findings under `exclude_dirs` from its report. A tool that is missing or
+   fails produces a warning; the sequence continues regardless.
 4. **Aggregate.** Each report file that exists is parsed into a common `Finding`
    record and severities are normalised onto one scale.
 5. **Report and exit.** Findings are sorted by severity, written to
@@ -83,7 +89,10 @@ other process produced.
 A scanner that is missing or crashes does not abort the run or fail the build.
 This allows Warden to return results from the scanners that completed. It also
 means that a green build does not prove every scanner ran. `tools_run` records
-which report files Warden found.
+which report files Warden found. `--strict` opts into the opposite: after the
+verdict, `cli` holds against the run every scanner it started that left no report
+of the shape its parser reads (`tooling.report_usable`, from
+`Scanner.report_is_array`) and exits `3` unless a finding already made it `1`.
 
 Warden handles an unreadable report the same way. This can happen when a tool
 crashes while writing the file. `load_json` returns a `LoadedJson` containing
@@ -114,16 +123,19 @@ a build. Semgrep's `ERROR` maps to `HIGH`, so those findings also fail a build. 
 
 About 110 lines of code parse `.warden.yaml` without a YAML library. This keeps
 the runtime dependency list to `rich` and `semgrep`, but supports only the
-documented shapes. The parser ignores unsupported syntax, so a malformed config
-can silently produce the defaults. Use `warden-config` to inspect the resolved
-configuration.
+documented shapes. The parser ignores unsupported syntax and falls back to the
+defaults, and `resolve_config` collects a bounded list of warnings about what it
+ignored (they never change a resolved value; the CLI prints them, `warden-config`
+sends them to stderr). Some malformed input still produces no warning, so use
+`warden-config` to inspect the resolved configuration.
 
 ### One record per scanner
 
 Everything Warden knows about a scanner is one `Scanner` record in
 `_scanners.py`. The record contains its display label, report filename, summary
-category, summary position, parser, command builder, accepted exit codes, and
-whether it needs a target URL. Warden derives the `.warden.yaml` key from the
+category, summary position, parser, command builder, accepted exit codes,
+whether it needs a target URL, and, for a scanner with no flag to skip paths,
+the report key that holds each finding's file path. Warden derives the `.warden.yaml` key from the
 label instead of storing both values. The constructor rejects a label that
 cannot be converted to a valid key.
 
@@ -176,7 +188,10 @@ The image runs as UID 10001 rather than root. Because callers are expected to
 override the UID with `--user` to match the owner of the mounted project, the
 image cannot rely on a fixed home directory. Scanner caches and settings live
 under a world-writable `/var/tmp/warden`, and `safe.directory` is set
-system-wide so Gitleaks can read a repository owned by another user.
+system-wide so git, which Semgrep runs (`git ls-files`), accepts a repository owned
+by another user. The
+environment also sets `core.fsmonitor=false`, which outranks the scanned
+project's own `.git/config`.
 
 ### Wrappers exist for source checkouts
 

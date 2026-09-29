@@ -59,6 +59,8 @@ class ResolvedConfig:
     exclude_dirs: list[str]
     enabled_tools: frozenset[str]
     """The scanner keys left enabled after `.warden.yaml` has been applied."""
+    warnings: tuple[str, ...] = ()
+    """Things worth telling the user about how the configuration was resolved."""
 
 
 @dataclass(slots=True, frozen=True)
@@ -66,6 +68,8 @@ class CliOptions:
     project_root: Path
     cli_url: str
     config_path: Path | None = None
+    timeout: float | None = None
+    strict: bool = False
 
 
 @dataclass(slots=True, frozen=True)
@@ -87,3 +91,4 @@ class ToolRunResult:
 class CommandResult:
     returncode: int | None
     warning: str | None = None
+    timed_out: bool = False

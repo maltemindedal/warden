@@ -5,6 +5,12 @@ inputs:
   url:
     description: "Optional DAST target URL"
     required: false
+  config:
+    description: "Path to a .warden.yaml OUTSIDE the checkout, used instead of the one in the repository (for pull request gates)"
+    required: false
+  strict:
+    description: "Fail (exit 3) when a scanner that ran left no usable report, or none ran"
+    default: "false"
   upload-artifact:
     description: "Upload reports"
     default: "true"
@@ -23,10 +29,41 @@ runs:
       shell: bash
       env:
         INPUT_URL: ${{ inputs.url }}
+        INPUT_STRICT: ${{ inputs.strict }}
+        INPUT_CONFIG: ${{ inputs.config }}
       run: |
         URL="$INPUT_URL"
         ARGS=()
         if [ -n "$URL" ]; then ARGS+=(--url "$URL"); fi
+        case "$INPUT_STRICT" in
+          true | True | TRUE) ARGS+=(--strict) ;;
+          false | False | FALSE | "") ;;
+          *)
+            echo "::error::The strict input must be true or false, not: $INPUT_STRICT"
+            exit 1
+            ;;
+        esac
+
+        # A .warden.yaml inside the checkout is part of the change under review, so it cannot
+        # be trusted to say what to scan. A config from outside it is mounted read-only and
+        # used instead: the workspace's own file is not read at all.
+        CONFIG_MOUNT=()
+        if [ -n "$INPUT_CONFIG" ]; then
+          CONFIG_FILE="$(readlink -f -- "$INPUT_CONFIG" || true)"
+          WORKSPACE_DIR="$(readlink -f -- "$GITHUB_WORKSPACE" || true)"
+          if [ ! -f "$CONFIG_FILE" ]; then
+            echo "::error::The config input does not name a file: $INPUT_CONFIG"
+            exit 1
+          fi
+          case "$CONFIG_FILE" in
+            "$WORKSPACE_DIR"/*)
+              echo "::error::The config input must point outside the checked-out workspace, or the change under review controls it: $INPUT_CONFIG"
+              exit 1
+              ;;
+          esac
+          CONFIG_MOUNT=(-v "$CONFIG_FILE:/warden-config.yaml:ro")
+          ARGS+=(--config /warden-config.yaml)
+        fi
 
         # The image runs as a non-root user. Match the runner's uid/gid so the
         # report can be written back into the bind-mounted workspace, and grant the
@@ -40,14 +77,18 @@ runs:
           "${DOCKER_OPTS[@]}" \
           -v "${GITHUB_WORKSPACE}:/src" \
           -v /var/run/docker.sock:/var/run/docker.sock \
+          "${CONFIG_MOUNT[@]}" \
           -e GITHUB_WORKSPACE="${GITHUB_WORKSPACE}" \
           warden:action "${ARGS[@]}"
 
     - name: Upload reports
       if: ${{ always() && inputs.upload-artifact == 'true' }}
-      uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+      uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
       with:
         name: ${{ inputs.artifact-name }}
+        # `.security_reports/**` starts with a dot, so upload-artifact skips it and only
+        # security_audit.json is uploaded. Do not set `include-hidden-files`: it would
+        # publish every raw scanner report on every consumer's next run.
         path: |
           ${{ github.workspace }}/security_audit.json
           ${{ github.workspace }}/.security_reports/**

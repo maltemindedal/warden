@@ -11,7 +11,7 @@ one report with one exit code:
 
 | Tool | Finds |
 | --- | --- |
-| Trivy | Vulnerable dependencies and misconfigured infrastructure files |
+| Trivy | Vulnerable dependencies |
 | Semgrep | Insecure code patterns (SAST) |
 | Gitleaks | Committed secrets |
 | OWASP ZAP | Optional DAST for vulnerabilities in a *running* web app |
@@ -27,7 +27,8 @@ it only runs when you give it one.
 - **Git**, to clone the repository.
 
 You do not need to install Trivy, Semgrep, or Gitleaks yourself. The installer
-handles Trivy and Gitleaks; Semgrep arrives as a Python dependency.
+handles Trivy and Gitleaks; Semgrep arrives as a Python dependency. A Trivy you
+install yourself must be 0.37 or newer.
 
 ## Step 1: Install
 
@@ -54,8 +55,15 @@ you don't have it, installs Trivy and Gitleaks if they are missing, then
 installs Warden itself as a uv tool. It also adds `~/.local/bin` to your `PATH`
 if it isn't already there.
 
-If the installer says it added a directory to your `PATH`, restart your terminal
-before continuing.
+What it downloads is pinned. On Linux, uv comes from its versioned installer, and
+Trivy and Gitleaks are fetched at a fixed version and installed only if the archive
+matches a SHA-256 recorded in `install.sh` (on macOS they come from Homebrew, on
+Windows from Scoop or Chocolatey, at whatever version those carry). Warden's own
+dependencies are installed with a seven-day cooldown, like the lockfile's, which
+needs uv 0.9.17 or newer: the installer stops with a message if yours is older.
+
+If the installer says it added a directory to your `PATH`, or that your shell
+profile already does, restart your terminal before continuing.
 
 ## Step 2: Confirm the install
 
@@ -132,8 +140,10 @@ Two things to understand about this output:
   what makes Warden usable as a CI gate.
 
 Full details are in `security_audit.json` next to your project, and each tool's
-raw output is in `.security_reports/`. Warden adds `.security_reports/` to your
-`.gitignore` automatically so those files are not committed.
+raw output is in `.security_reports/`. If your project has a `.gitignore`, Warden adds
+`.security_reports/` to it automatically so those files are not committed. If it
+cannot (an unwritable or non-text `.gitignore`) it warns and carries on; add the line
+yourself. Without a `.gitignore` it creates none.
 
 ## Step 5: Add a DAST scan (optional)
 
@@ -144,8 +154,8 @@ warden --url "http://localhost:3000"
 ```
 
 This launches OWASP ZAP in a container, which is why Docker is a prerequisite.
-Warden rewrites `localhost` and `127.0.0.1` to `host.docker.internal` so the
-container can reach an app running on your machine.
+Warden rewrites a URL host of `localhost` or `127.0.0.1` to
+`host.docker.internal` so the container can reach an app running on your machine.
 
 A full ZAP scan takes minutes rather than seconds.
 

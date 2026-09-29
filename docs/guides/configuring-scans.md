@@ -16,8 +16,10 @@ warden-config .
 {"url": "", "exclude_dirs": [], "tools": {"trivy": true, "semgrep": true, "gitleaks": true, "zap": true}}
 ```
 
-This is worth doing because a config file that fails to parse is silently
-ignored rather than reported as an error.
+This is worth doing because Warden falls back to the defaults for what it cannot
+read, and warns about most of what it does not understand (see
+[the config format](../reference/configuration.md#the-config-file-format-is-a-yaml-subset)),
+so the resolved output is the ground truth.
 
 ## Exclude directories from scanning
 
@@ -41,10 +43,13 @@ warden-config .
 {"url": "", "exclude_dirs": ["node_modules/", "vendor/", ".venv/"], ...}
 ```
 
-Each entry is forwarded to all three static scanners, but they interpret
-exclusions differently. Trivy takes directory paths, while Semgrep and Gitleaks
-take patterns. If something is still being scanned after you excluded it, try
-both a bare name (`node_modules`) and a trailing-slash form (`node_modules/`).
+Each entry is applied to all three static scanners, but they interpret
+exclusions differently. Trivy takes directory paths and Semgrep takes patterns.
+Gitleaks scans everything and Warden drops its findings under each listed
+directory, counted from the project root, so give it a plain directory such as
+`vendor/` rather than a glob. If something is still being scanned after you
+excluded it, try both a bare name (`node_modules`) and a trailing-slash form
+(`node_modules/`).
 
 Installed dependency directories often produce false positives. A `.venv/` or
 `node_modules/` full of third-party code will generate findings that are not
@@ -74,7 +79,9 @@ target_url: "http://localhost:3000"
 ```
 
 `warden` now runs ZAP whenever that app is up. A `--url` flag on the command
-line takes precedence.
+line takes precedence. Under the GitHub Action the project's own `target_url` is
+ignored (pass the `url` input instead), see
+[the configuration reference](../reference/configuration.md#target_url).
 
 > Setting `tools.zap: false` clears the target URL after the CLI flag is applied.
 > With `zap: false` in your config, even

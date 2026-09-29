@@ -14,7 +14,7 @@ if ($env:PYTHONPATH) {
 }
 
 if ((Get-Command uv -ErrorAction SilentlyContinue) -and (Test-Path (Join-Path $ProjectRoot "pyproject.toml"))) {
-    & uv run --directory $ProjectRoot warden @RemainingArgs
+    & uv run --project $ProjectRoot warden @RemainingArgs
     exit $LASTEXITCODE
 }
 

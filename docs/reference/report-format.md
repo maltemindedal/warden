@@ -3,7 +3,10 @@
 A scan produces two kinds of output:
 
 - `.security_reports/` contains each scanner's raw JSON, unmodified except for
-  pretty-printing.
+  pretty-printing and, for `gitleaks.json`, the removal of findings under
+  `exclude_dirs`. Gitleaks runs with `--redact`, so `gitleaks.json` holds
+  `REDACTED` in place of each matched secret. Trivy runs with `--scanners vuln`, so `trivy.json` holds
+  vulnerabilities only.
 - `security_audit.json` contains the merged report described here.
 
 ## Input files
@@ -76,7 +79,9 @@ Present only when the source tool provides them:
 | `solution` | string | ZAP | Remediation advice from the alert. |
 
 Gitleaks findings never include the matched secret. The `snippet` field is
-hardcoded to `REDACTED`, so the report is safe to upload as a CI artifact.
+hardcoded to `REDACTED`, so the report is safe to upload as a CI artifact. The raw
+`gitleaks.json` is redacted by Gitleaks itself, but it still lists where each
+secret is, so keep it out of version control all the same.
 
 ## Severity normalisation
 

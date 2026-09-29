@@ -13,20 +13,33 @@ From a clone of this repository:
 docker build -t warden:local .
 ```
 
-The build pulls Trivy and Gitleaks from their upstream release channels. Both
-default to the latest release. To pin them instead, pass the version you want:
+The image pins what it downloads. uv comes from a build stage pinned by version and
+digest (`ghcr.io/astral-sh/uv`), and Trivy and Gitleaks are fetched at a fixed
+version whose release archive must match a SHA-256 recorded in the `Dockerfile`, one
+per architecture (amd64 and arm64). A download that does not match fails the build.
+Nothing is piped into a shell, and updating means editing the `Dockerfile`. The `uv`
+stage is also tracked by Dependabot (see `.github/dependabot.yml`), and the same uv
+version is pinned in `install.sh` and `install.ps1`.
+
+To build with other scanner versions, pass the version **and** its digests. Both
+versions are given without a leading `v`, and the digests are the archive's line in
+the release's checksums file (`trivy_<version>_Linux-64bit.tar.gz`,
+`trivy_<version>_Linux-ARM64.tar.gz`, `gitleaks_<version>_linux_x64.tar.gz`,
+`gitleaks_<version>_linux_arm64.tar.gz`):
 
 ```bash
 docker build -t warden:local \
   --build-arg TRIVY_VERSION=<version> \
-  --build-arg GITLEAKS_VERSION=<version> .
+  --build-arg TRIVY_SHA256_AMD64=<digest> --build-arg TRIVY_SHA256_ARM64=<digest> \
+  --build-arg GITLEAKS_VERSION=<version> \
+  --build-arg GITLEAKS_SHA256_AMD64=<digest> --build-arg GITLEAKS_SHA256_ARM64=<digest> .
 ```
 
-Take the values from the release pages for
+Take them from the release pages for
 [Trivy](https://github.com/aquasecurity/trivy/releases) and
-[Gitleaks](https://github.com/gitleaks/gitleaks/releases), without the leading
-`v`. This repository pins neither tool, so there is no tested version pair to
-copy. Choose the releases, build the image, and record the versions you used.
+[Gitleaks](https://github.com/gitleaks/gitleaks/releases). A checksum fetched from
+the release it belongs to proves the download is intact, not that the release is
+trustworthy, which is why the digests are committed rather than fetched.
 
 ## Scan a project
 
@@ -49,11 +62,11 @@ docker run --rm --user "$(id -u):$(id -g)" -v "$(pwd):/src" warden:local --help
 
 The image runs as an unprivileged user (`warden`, UID 10001). Without
 `--user`, the container writes as UID 10001, which will not have permission to
-create files in a bind-mounted directory owned by you. The scan fails partway
-through with:
+create files in a bind-mounted directory owned by you. The run normally stops
+before any scanner starts, with:
 
 ```
-PermissionError: [Errno 13] Permission denied: '/src/.security_reports/semgrep.json'
+warden: error: cannot prepare the report paths: /src/.security_reports: Permission denied
 ```
 
 Passing `--user "$(id -u):$(id -g)"` runs the container as you, so the report
@@ -64,8 +77,10 @@ The flag is unnecessary there but harmless, so the commands above always use it.
 
 Because the container may run as any UID, the image keeps its scanner caches and
 settings under `/var/tmp/warden` rather than a fixed home directory, and sets
-`safe.directory` system-wide so Gitleaks can read a repository owned by a
-different user.
+`safe.directory` system-wide so git, which Semgrep runs (`git ls-files`), accepts a
+repository owned by a different user. Because the scanned tree is not trusted, it also
+switches `core.fsmonitor` off through the environment, so a `.git/config` shipped inside
+the project cannot run a command when a scanner calls `git`.
 
 ## Add a DAST scan
 
@@ -94,9 +109,9 @@ socket instead:
 
 ### Reaching the target application
 
-Warden rewrites `localhost` and `127.0.0.1` to `host.docker.internal`
-automatically, so `--url http://localhost:3000` usually works from inside a
-container.
+Warden rewrites a URL host of `localhost` or `127.0.0.1` to
+`host.docker.internal` automatically, so `--url http://localhost:3000` usually
+works from inside a container.
 
 On Linux, `host.docker.internal` is not resolvable by default. Either target a
 service running in Docker by its container or network address, or add:
@@ -122,7 +137,9 @@ docker run --rm \
     warden:local --url "http://host.docker.internal:3000"
 ```
 
-The GitHub Action sets `GITHUB_WORKSPACE` for you. See
+The GitHub Action sets `GITHUB_WORKSPACE` for you. Passing it also stops the project's
+own `.warden.yaml` from supplying the `target_url` (`--url` still works), so prefer
+`WARDEN_HOST_WORKSPACE` if you want that file's target used. See
 [Configuration](../reference/configuration.md#environment-variables) for
 precedence.
 

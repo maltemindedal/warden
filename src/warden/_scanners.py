@@ -1,6 +1,8 @@
 from __future__ import annotations
 
 import os
+import re
+import uuid
 from collections.abc import Callable
 from dataclasses import dataclass
 from pathlib import Path
@@ -34,18 +36,63 @@ class Command:
     cwd: Path
     stderr_to_devnull: bool = False
     env_overrides: dict[str, str] | None = None
+    on_timeout: list[str] | None = None
+    """A command to run, best effort, after this one was stopped for running too long."""
 
 
 CommandBuilder = Callable[[ScanRequest], Command]
 
 
+# The pieces of a URL, found without backtracking: an optional scheme and `//`, then the
+# authority up to the first `/`, `?` or `#`, whose host follows its last `@`.
+_URL_LEAD: Final = re.compile(r"(?:[A-Za-z][A-Za-z0-9+.-]*:)?//")
+_AUTHORITY_END: Final = re.compile(r"[/?#]")
+_HTTP_LEAD: Final = re.compile(r"https?://")
+_LOOPBACK_HOST: Final = re.compile(r"(?:localhost|127\.0\.0\.1)(?P<dot>\.?)(?=:|\Z)")
+
+
 def rewrite_zap_target(url: str) -> str:
-    """ZAP runs in its own container, where the host's loopback is not the host."""
-    if "localhost" in url or "127.0.0.1" in url:
-        return url.replace("localhost", "host.docker.internal").replace(
-            "127.0.0.1", "host.docker.internal"
-        )
-    return url
+    """ZAP runs in its own container, where the host's loopback is not the host.
+
+    Only the URL's host is rewritten, and only when it is exactly `localhost` or `127.0.0.1`: the
+    same text in the user name, path, query or fragment is left alone, and so is everything
+    else in the URL. It is linear in the length of the URL, because a project controls it.
+    """
+    lead = _URL_LEAD.match(url)
+    start = lead.end() if lead else 0
+    boundary = _AUTHORITY_END.search(url, start)
+    end = boundary.start() if boundary else len(url)
+    last_at = url.rfind("@", start, end)
+    host_start = last_at + 1 if last_at != -1 else start
+    host = _LOOPBACK_HOST.match(url, host_start, end)
+    if host is None:
+        return url
+    return f"{url[:host_start]}host.docker.internal{host['dot']}{url[host.end() :]}"
+
+
+def url_problem(url: str) -> str | None:
+    """Why `url` cannot be a DAST target, or `None` if it looks like one.
+
+    ZAP only takes an `http://` or `https://` target with a host, and its check is a literal
+    lowercase prefix test. A project supplies the URL, so an escape sequence, a bidirectional
+    override or any other character that is not plainly printable must never reach the terminal.
+    """
+    if not url.isprintable():
+        return "it contains control or non-printable characters"
+    lead = _HTTP_LEAD.match(url)
+    if lead is None:
+        return "it does not start with http:// or https:// (lowercase, as ZAP requires)"
+    boundary = _AUTHORITY_END.search(url, lead.end())
+    authority = url[lead.end() : boundary.start() if boundary else len(url)]
+    host_and_port = authority.rpartition("@")[2]
+    host = (
+        host_and_port[: host_and_port.find("]") + 1]
+        if host_and_port.startswith("[")
+        else (host_and_port.partition(":")[0])
+    )
+    if not host:
+        return "it has no host"
+    return None
 
 
 def resolve_host_report_dir(report_dir: str | Path) -> Path:
@@ -61,7 +108,20 @@ def resolve_host_report_dir(report_dir: str | Path) -> Path:
 
 
 def _build_trivy_command(request: ScanRequest) -> Command:
-    args = ["trivy", "fs", ".", "--format", "json", "--output", str(request.report_path), "--quiet"]
+    # Only vulnerabilities are read (`parse_trivy`). Trivy's default also runs its secret scanner
+    # over the whole tree, whose result is discarded and which Gitleaks already covers.
+    args = [
+        "trivy",
+        "fs",
+        ".",
+        "--format",
+        "json",
+        "--output",
+        str(request.report_path),
+        "--quiet",
+        "--scanners",
+        "vuln",
+    ]
     if request.exclude_dirs:
         args.extend(["--skip-dirs", ",".join(request.exclude_dirs)])
     return Command(args=args, cwd=request.project_root)
@@ -90,6 +150,8 @@ def _build_semgrep_command(request: ScanRequest) -> Command:
 
 
 def _build_gitleaks_command(request: ScanRequest) -> Command:
+    # `gitleaks detect` has no flag for skipping paths (it rejects `--exclude-path` as an unknown
+    # flag), so `exclude_dirs` is applied to its report afterwards. See `Scanner.path_key`.
     args = [
         "gitleaks",
         "detect",
@@ -100,18 +162,23 @@ def _build_gitleaks_command(request: ScanRequest) -> Command:
         str(request.report_path),
         "--exit-code",
         "0",
+        # The raw report otherwise holds every matched secret in clear text. Only the rule, the
+        # file and the line are read from it.
+        "--redact",
     ]
-    for exclude_dir in request.exclude_dirs:
-        if exclude_dir:
-            args.extend(["--exclude-path", exclude_dir])
     return Command(args=args, cwd=request.project_root, stderr_to_devnull=True)
 
 
 def _build_zap_command(request: ScanRequest) -> Command:
+    # Stopping the `docker run` client does not stop the container: the ZAP script is the
+    # container's PID 1 and handles no signal. A name lets a timeout `docker kill` it.
+    container = f"warden-zap-{uuid.uuid4().hex}"
     args = [
         "docker",
         "run",
         "--rm",
+        "--name",
+        container,
         "-v",
         f"{resolve_host_report_dir(request.report_dir)}:/zap/wrk/:rw",
         "-t",
@@ -125,7 +192,7 @@ def _build_zap_command(request: ScanRequest) -> Command:
         ZAP_HTML_REPORT,
         "-I",
     ]
-    return Command(args=args, cwd=request.report_dir)
+    return Command(args=args, cwd=request.report_dir, on_timeout=["docker", "kill", container])
 
 
 @dataclass(slots=True, frozen=True)
@@ -142,6 +209,12 @@ class Scanner:
     requires_url: bool = False
     extra_artifacts: tuple[str, ...] = ()
     """Anything else this scanner drops in the report directory, cleared between runs."""
+    path_key: str | None = None
+    """For a scanner with no flag to skip paths: the key holding each finding's file path.
+
+    Its report is filtered against `exclude_dirs` after the scan."""
+    report_is_array: bool = False
+    """Whether the report is a JSON array (Gitleaks) rather than a JSON object."""
 
     def __post_init__(self) -> None:
         # `key` is derived rather than stored so the two cannot drift apart, which only
@@ -181,6 +254,8 @@ GITLEAKS: Final[Scanner] = Scanner(
     parser=parse_gitleaks,
     build_command=_build_gitleaks_command,
     accepted_returncodes=frozenset({0}),
+    path_key="File",
+    report_is_array=True,
 )
 ZAP: Final[Scanner] = Scanner(
     label="ZAP",

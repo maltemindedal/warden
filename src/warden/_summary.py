@@ -108,7 +108,12 @@ def print_summary(
     console.print(table)
     console.print("-" * 50)
     status_style, status_label, summary_line = _status_summary(verdict.failed)
-    status_message = (
-        f"[{status_style}]{status_label}:[/{status_style}] {summary_line} See {output_path}"
+    # The path is appended as plain text, not parsed as markup or emoji codes: a project directory
+    # named like markup (`[/red]`), like an emoji code (`:warning:`) or ending in a backslash must
+    # print as written, not raise or change. A Text skips rich's repr highlighter, which colours a
+    # path on a terminal, so it is applied explicitly to keep ordinary output the same.
+    status_line = Text.from_markup(
+        f"[{status_style}]{status_label}:[/{status_style}] {summary_line} See "
     )
-    console.print(status_message)
+    status_line.append(output_path)
+    console.print(console.highlighter(status_line))

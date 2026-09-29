@@ -4,6 +4,7 @@ import json
 import shutil
 from pathlib import Path
 
+import pytest
 from pytest import CaptureFixture
 
 from warden._json import get_int, load_json
@@ -14,6 +15,14 @@ from warden._summary import judge, print_summary
 from warden.aggregate import build_report, main
 
 FIXTURE_DIR = Path(__file__).parent / "fixtures"
+
+
+@pytest.fixture(autouse=True)
+def _plain_console(monkeypatch: pytest.MonkeyPatch) -> None:
+    """rich reads these when a Console is created, so without this the output depends on them."""
+    monkeypatch.delenv("FORCE_COLOR", raising=False)
+    monkeypatch.delenv("TTY_COMPATIBLE", raising=False)
+    monkeypatch.setenv("COLUMNS", "200")
 
 
 def _copy_fixture(name: str, destination: Path) -> None:
@@ -36,6 +45,27 @@ def test_normalize_severity_maps_tool_specific_values() -> None:
 def test_get_int_accepts_a_numeric_string_and_rejects_anything_else() -> None:
     assert get_int({"riskcode": "3"}, "riskcode") == 3
     assert get_int({"riskcode": "high"}, "riskcode") is None
+
+
+@pytest.mark.parametrize(
+    ("value", "expected"),
+    [
+        (5, 5),
+        ("  42 ", 42),
+        ("\u0663", 3),  # Arabic-Indic digit three: int() has always accepted it
+        ("\u00b2", None),  # superscript two: isdigit() is true but int() raises
+        ("\u2460", None),  # circled one, likewise
+        pytest.param("9" * 5000, None, id="over-4300-digits"),  # int() refuses that many
+        (True, None),  # JSON `true` is not a line number
+        (False, None),
+        (None, None),
+        ("-3", None),
+    ],
+)
+def test_get_int_takes_only_what_int_can_read_and_never_raises(
+    value: object, expected: int | None
+) -> None:
+    assert get_int({"line": value}, "line") == expected
 
 
 def test_load_json_returns_the_parsed_document_when_the_file_is_valid(tmp_path: Path) -> None:
@@ -165,6 +195,25 @@ def test_print_summary_renders_a_table_for_a_failing_verdict(
     assert "FAIL: High/Critical issues found. See security_audit.json" in output
 
 
+@pytest.mark.parametrize(
+    "output_file",
+    [
+        "proj[/red]x/a.json",
+        "proj[bold]x/a.json",
+        "x:warning:y/a.json",
+        "C:\\Users\\me\\[2024] Proj\\a.json",
+        "C:\\proj\\",
+    ],
+)
+def test_print_summary_shows_a_path_literally_even_if_it_looks_like_rich_markup(
+    capsys: CaptureFixture[str], output_file: str
+) -> None:
+    """A project directory name must not be able to crash or rewrite the status line."""
+    print_summary(verdict=judge(_findings("CRITICAL")), output_file=output_file)
+
+    assert capsys.readouterr().out.splitlines()[-1].endswith(f"See {output_file}")
+
+
 def test_aggregate_main_exits_non_zero_when_a_critical_finding_is_present(tmp_path: Path) -> None:
     _copy_fixture("gitleaks.json", tmp_path)
     output_file = tmp_path / "security_audit.json"
@@ -180,3 +229,17 @@ def test_aggregate_main_exits_zero_when_no_reports_are_present(tmp_path: Path) -
     exit_code = main([str(tmp_path), str(tmp_path / "security_audit.json")])
 
     assert exit_code == 0
+
+
+def test_a_report_dir_that_does_not_exist_is_a_usage_error_not_a_pass(
+    tmp_path: Path, capsys: CaptureFixture[str]
+) -> None:
+    """A mistyped path used to print `PASS`, exit 0, and write an empty report."""
+    output_file = tmp_path / "security_audit.json"
+
+    with pytest.raises(SystemExit) as exit_info:
+        main([str(tmp_path / "typo"), str(output_file)])
+
+    assert exit_info.value.code == 2
+    assert not output_file.exists()
+    assert "is not an existing directory" in capsys.readouterr().err

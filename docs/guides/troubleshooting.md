@@ -5,7 +5,9 @@ Symptoms and their causes, in rough order of how often they come up.
 ## The `warden` command is not found
 
 The installer puts the executable in `~/.local/bin` and appends that directory
-to your shell profile. A shell started before the install will not have it.
+to your shell profile. A shell started before the install will not have it. If
+the installer could not write the profile it says so; add `~/.local/bin` to your
+`PATH` yourself.
 
 Restart your terminal, or source the profile the installer edited:
 
@@ -41,15 +43,26 @@ Output like this means a scanner did not run cleanly:
 then bases its verdict on whatever reports exist. A scan can print `PASS` while a
 scanner never ran.
 
-Two causes:
+Four causes:
 
 - **`... was not found on PATH.`** The binary is missing. Re-run the installer,
   or use the [Docker image](running-with-docker.md), which bundles all three
   static scanners.
+- **`... timed out after N seconds and was stopped.`** You passed `--timeout` and
+  that scanner was still running when it expired. Raise the limit, or exclude the
+  directories that make it slow (see below).
+- **`... could not be started: <reason>`** The binary is there but the
+  operating system would not run it, for example `Permission denied` on a file
+  that is not executable. The other scanners still run.
 - **`... exited with status N.`** The tool ran and failed. Its stderr is
-  suppressed for Semgrep and Gitleaks, so run the tool directly to see why.
+  suppressed for Semgrep and Gitleaks, so run the tool directly to see why. A Trivy
+  older than 0.37 fails this way with `unknown flag: --scanners`, which Warden
+  passes: use 0.37 or newer (the installer and the image bring one).
 
-To confirm which tools actually contributed, check `tools_run`:
+To make this a failure instead of a warning, run `warden --strict`: it exits `3`
+when a scanner that ran left no usable report (see the
+[CLI reference](../reference/cli.md#behaviour)). To confirm which tools actually
+contributed, check `tools_run`:
 
 ```bash
 python -c "import json;print(json.load(open('security_audit.json'))['summary']['tools_run'])"
@@ -73,14 +86,24 @@ If `"url"` is empty while `"zap"` is `false`, that is the cause: **`tools.zap:
 false` blanks the URL after the CLI flag is applied**, so an explicit `--url`
 cannot override it. Remove `zap: false` from `.warden.yaml`.
 
-## `PermissionError` when running the Docker image
+## `Permission denied` when running the Docker image
 
 ```
-PermissionError: [Errno 13] Permission denied: '/src/.security_reports/semgrep.json'
+warden: error: cannot prepare the report paths: /src/.security_reports: Permission denied
 ```
 
-The image runs as an unprivileged user that cannot write to your bind mount. Add
-the `--user` flag:
+The message names `.security_reports` when the directory cannot be created, or a
+report inside it (`.../trivy.json`, or whichever report is left) when it exists from
+an earlier run under another user. Either way it comes before any scanner starts. If
+`.security_reports` already exists, is not writable and holds no old report, the
+scanners run first and the run ends with this instead:
+
+```
+warden: error: cannot read the reports or write security_audit.json: /src/security_audit.json: Permission denied
+```
+
+The image runs as an unprivileged user that cannot write to your bind mount. Add the
+`--user` flag:
 
 ```bash
 docker run --rm --user "$(id -u):$(id -g)" -v "$(pwd):/src" warden:local
@@ -100,10 +123,21 @@ The unprivileged container user is not in the socket's group. Add it:
 --group-add "$(stat -c '%g' /var/run/docker.sock)"
 ```
 
+## `Warning: could not add .security_reports/ to .gitignore`
+
+Warden keeps the raw reports out of version control by appending
+`.security_reports/` to the project's `.gitignore`. When it cannot (the file is
+read-only, or not text, such as a UTF-16 file) it prints this warning, gives the
+reason, and carries on with the scan. Nothing is ignored in that case, so add
+`.security_reports/` to your ignore rules yourself: Gitleaks redacts the secrets
+it finds, but the reports still name every finding and where it is.
+
 ## Changes to `.warden.yaml` have no effect
 
-A config file that cannot be parsed is silently discarded and defaults are
-used. Warden prints no error. Check what it resolved:
+A config file that cannot be read is discarded and defaults are used, and Warden
+warns about what it did not understand in the file it did read (see
+[the format notes](../reference/configuration.md#the-config-file-format-is-a-yaml-subset)).
+Read the `Warning:` lines after `Target:`, then check what it resolved:
 
 ```bash
 warden-config .
@@ -120,7 +154,9 @@ causes:
   nesting are ignored. See
   [the format notes](../reference/configuration.md#the-config-file-format-is-a-yaml-subset).
 - Indentation is inconsistent. Any indentation marks a nested line, but it must
-  follow the `exclude_dirs:` or `tools:` key it belongs to.
+  follow the `exclude_dirs:` or `tools:` key it belongs to. A list written at the
+  *same* indent as `exclude_dirs:` (the default style of many YAML tools) is not
+  under it: indent the `- entry` lines.
 
 ## Findings from `node_modules`, `.venv`, or `vendor`
 

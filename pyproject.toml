@@ -7,10 +7,11 @@ name = "warden"
 version = "0.1.0"
 description = "Run Trivy, Semgrep, Gitleaks, and OWASP ZAP with one report and exit code."
 readme = "README.md"
-license = { file = "LICENSE" }
+license = "MIT"
+license-files = ["LICENSE"]
 requires-python = ">=3.11"
 authors = [{ name = "maltemindedal" }]
-dependencies = ["rich>=13.9,<15", "semgrep>=1.128,<2"]
+dependencies = ["rich>=13.9,<16", "semgrep>=1.128,<2"]
 
 [project.scripts]
 warden = "warden.cli:main"
@@ -18,7 +19,7 @@ warden-config = "warden.config:main"
 warden-aggregate = "warden.aggregate:main"
 
 [dependency-groups]
-dev = ["pytest>=9.0.3,<10", "pytest-cov>=6.1,<7", "ruff>=0.11.6,<0.12", "ty>=0.0.73,<0.1"]
+dev = ["pytest>=9.0.3,<10", "pytest-cov>=7.1,<8", "ruff>=0.16.8,<0.17", "ty>=0.0.73,<0.1"]
 
 [tool.uv]
 # Dependency cooldown: ignore distributions published in the last 7 days, so a
@@ -26,10 +27,14 @@ dev = ["pytest>=9.0.3,<10", "pytest-cov>=6.1,<7", "ruff>=0.11.6,<0.12", "ty>=0.0
 # Relative rather than a fixed date, so the window rolls without maintenance.
 exclude-newer = "7 days"
 default-groups = ["dev"]
-# semgrep pins mcp==1.23.3, which carries GHSA-hvrp-rf83-w775, GHSA-jpw9-pfvf-9f58
-# and GHSA-vj7q-gjh5-988w. We only use semgrep's CLI scanner, never its MCP server,
-# so overriding the pin to the patched release is safe.
-override-dependencies = ["mcp>=1.28.1"]
+# semgrep 1.146 to 1.172 pin mcp==1.23.3 (older releases pin older mcp releases or none), which
+# carries GHSA-hvrp-rf83-w775, GHSA-jpw9-pfvf-9f58 and GHSA-vj7q-gjh5-988w. We only use semgrep's
+# CLI scanner, never its MCP server, so the pin is overridden to a patched release. Capped below 2 because mcp 2.x
+# renamed the modules semgrep imports, so `semgrep` fails at startup on a 2.x resolve. From
+# semgrep 1.173 the pin is mcp==1.29.0 (patched), so with such a semgrep locked the override
+# only serves as the cap, and a relock can move mcp past that pin: use
+# `uv lock --upgrade-package mcp==<the pin>` to keep them in step.
+override-dependencies = ["mcp>=1.28.1,<2"]
 
 [tool.hatch.build.targets.wheel]
 packages = ["src/warden"]
@@ -52,6 +57,10 @@ include = [
 # ty's environment.root below must list the same roots.
 pythonpath = ["src", "tests"]
 testpaths = ["tests"]
+# Fail on a misspelled marker or config key, on any warning, and on an xfail that starts passing.
+addopts = ["--strict-markers", "--strict-config"]
+filterwarnings = ["error"]
+xfail_strict = true
 
 [tool.ruff]
 line-length = 100
@@ -59,9 +68,17 @@ target-version = "py311"
 src = ["src", "tests"]
 
 [tool.ruff.lint]
-select = ["B", "E", "F", "I", "UP", "W"]
+# S: security (bandit), BLE: blind `except`, PGH: blanket `noqa` / `type: ignore`.
+select = ["B", "BLE", "E", "F", "I", "PGH", "S", "UP", "W"]
+
+[tool.ruff.lint.per-file-ignores]
+# Tests assert by design and run fixed, list-form commands.
+"tests/**" = ["S101", "S603", "S607"]
 
 [tool.ruff.format]
+# ruff 0.16 formats Markdown by default. Keep the check on Python files, which is what it
+# covered before, and leave vendored docs (.agents/skills, hash-tracked) untouched.
+exclude = ["*.md"]
 docstring-code-format = true
 quote-style = "double"
 indent-style = "space"

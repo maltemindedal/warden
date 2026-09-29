@@ -10,11 +10,20 @@
 #     -v "$(pwd):/src" -v /var/run/docker.sock:/var/run/docker.sock \
 #     warden:local -u "http://host.docker.internal:3000"
 
-FROM python:3.11-slim-bookworm
+# uv, pinned by version and digest and copied in as a binary: nothing is piped into a shell.
+FROM ghcr.io/astral-sh/uv:0.12.18@sha256:3adc3706091ce7c2fe595e669628caedd6d951551b92b258b7e7dbe06d9440bc AS uv
 
-# Optional build args for reproducible builds
-ARG TRIVY_VERSION=
-ARG GITLEAKS_VERSION=
+FROM python:3.11-slim-trixie
+
+# The scanner versions and the SHA-256 of the release archive for each architecture. Every
+# download is checked against these, so changing a version means changing its digests too
+# (they are in the release's checksums file).
+ARG TRIVY_VERSION=0.74.0
+ARG TRIVY_SHA256_AMD64=2ae6fe3ee734b7fdf11335663e18c75ea12dccc76062f09f164a3b0f8be4371a
+ARG TRIVY_SHA256_ARM64=b94ce1976bbf3c15b514b605ee88be7c6d94a29be2302847ff01cb794d47aad5
+ARG GITLEAKS_VERSION=8.30.1
+ARG GITLEAKS_SHA256_AMD64=551f6fc83ea457d62a0d98237cbad105af8d557003051f41f3e7ca7b3f2470eb
+ARG GITLEAKS_SHA256_ARM64=e4a487ee7ccd7d3a7f7ec08657610aa3606637dab924210b3aee62570fb4b080
 
 ENV PYTHONUNBUFFERED=1 \
     PYTHONUTF8=1 \
@@ -22,51 +31,59 @@ ENV PYTHONUNBUFFERED=1 \
   UV_COMPILE_BYTECODE=1 \
   UV_PYTHON_DOWNLOADS=never
 
-# Base utilities and the Docker CLI for optional ZAP scans
+# Base utilities and the Docker CLI (client only) for optional ZAP scans
 RUN apt-get update \
  && apt-get install -y --no-install-recommends \
       bash \
       ca-certificates \
       curl \
+      docker-cli \
       git \
       gzip \
       tar \
-      docker.io \
  && rm -rf /var/lib/apt/lists/*
 
-# Trivy
-RUN curl -sfL https://raw.githubusercontent.com/aquasecurity/trivy/main/contrib/install.sh \
-  | sh -s -- -b /usr/local/bin ${TRIVY_VERSION}
+# From here on a failure anywhere in a pipeline fails the step, so a download or a
+# checksum that fails can never build an image without a tool (every scan would then warn
+# that the tool is missing, and pass).
+SHELL ["/bin/bash", "-o", "pipefail", "-c"]
 
-# uv and Warden runtime dependencies
-RUN curl -LsSf https://astral.sh/uv/install.sh | sh \
- && ln -sf /root/.local/bin/uv /usr/local/bin/uv
+# Trivy
+RUN set -eu; \
+    case "$(dpkg --print-architecture)" in \
+      amd64) archive="Linux-64bit"; sha256="${TRIVY_SHA256_AMD64}" ;; \
+      arm64) archive="Linux-ARM64"; sha256="${TRIVY_SHA256_ARM64}" ;; \
+      *) echo "Unsupported architecture for trivy: $(dpkg --print-architecture)" >&2; exit 1 ;; \
+    esac; \
+    curl -fsSL "https://github.com/aquasecurity/trivy/releases/download/v${TRIVY_VERSION}/trivy_${TRIVY_VERSION}_${archive}.tar.gz" -o /tmp/trivy.tgz; \
+    echo "${sha256}  /tmp/trivy.tgz" | sha256sum -c -; \
+    tar -xzf /tmp/trivy.tgz --no-same-owner -C /usr/local/bin trivy; \
+    rm -f /tmp/trivy.tgz
 
 # Gitleaks
 RUN set -eu; \
-    arch="$(dpkg --print-architecture)"; \
-    case "$arch" in \
-      amd64) gl_arch="linux_x64" ;; \
-      arm64) gl_arch="linux_arm64" ;; \
-      *) echo "Unsupported architecture for gitleaks: $arch" >&2; exit 1 ;; \
+    case "$(dpkg --print-architecture)" in \
+      amd64) archive="linux_x64"; sha256="${GITLEAKS_SHA256_AMD64}" ;; \
+      arm64) archive="linux_arm64"; sha256="${GITLEAKS_SHA256_ARM64}" ;; \
+      *) echo "Unsupported architecture for gitleaks: $(dpkg --print-architecture)" >&2; exit 1 ;; \
     esac; \
-    if [ -z "${GITLEAKS_VERSION}" ]; then \
-      GITLEAKS_VERSION="$(curl -s https://api.github.com/repos/gitleaks/gitleaks/releases/latest | grep '"tag_name"' | head -n 1 | sed -E 's/.*"v?([^\"]+)\".*/\1/')"; \
-    fi; \
-    url="https://github.com/gitleaks/gitleaks/releases/download/v${GITLEAKS_VERSION}/gitleaks_${GITLEAKS_VERSION}_${gl_arch}.tar.gz"; \
-    curl -sSL "$url" -o /tmp/gitleaks.tgz; \
-    tar -xzf /tmp/gitleaks.tgz -C /usr/local/bin gitleaks; \
-    rm -f /tmp/gitleaks.tgz; \
-    chmod +x /usr/local/bin/gitleaks
+    curl -fsSL "https://github.com/gitleaks/gitleaks/releases/download/v${GITLEAKS_VERSION}/gitleaks_${GITLEAKS_VERSION}_${archive}.tar.gz" -o /tmp/gitleaks.tgz; \
+    echo "${sha256}  /tmp/gitleaks.tgz" | sha256sum -c -; \
+    tar -xzf /tmp/gitleaks.tgz --no-same-owner -C /usr/local/bin gitleaks; \
+    rm -f /tmp/gitleaks.tgz
+
+# uv, for the Warden runtime dependencies below
+COPY --from=uv /uv /usr/local/bin/uv
+
+# Fail the build here, not on the first scan, if a tool does not run on this architecture.
+RUN trivy --version && gitleaks version && uv --version
 
 # Copy Warden scripts into the image
 WORKDIR /opt/warden
 COPY pyproject.toml uv.lock README.md LICENSE ./
 COPY src/ ./src/
-COPY bin/ ./bin/
 
-RUN uv sync --frozen --no-dev \
- && chmod +x ./bin/warden ./bin/warden.sh \
+RUN uv sync --locked --no-dev --no-cache \
  && ln -sf /opt/warden/.venv/bin/warden /usr/local/bin/warden
 
 ENV PATH="/opt/warden/.venv/bin:${PATH}"
@@ -86,10 +103,18 @@ ENV HOME=/var/tmp/warden \
     TRIVY_CACHE_DIR=/var/tmp/warden/cache/trivy \
     SEMGREP_SETTINGS_FILE=/var/tmp/warden/config/semgrep/settings.yml
 
-# /src is owned by the host user, so git (and therefore gitleaks) would otherwise
-# refuse to operate on it under a different uid. Set system-wide rather than via
+# /src is owned by the host user, so git (which Semgrep runs, as `git ls-files`) would
+# otherwise refuse to operate on it under a different uid. Set system-wide rather than via
 # GIT_CONFIG_* env vars so it survives any HOME the caller supplies.
 RUN git config --system --add safe.directory '*'
+
+# The scanned tree is not trusted, and neither is a `.git/config` it carries: its
+# `core.fsmonitor` would run a command of the project's choosing whenever git looks at
+# the tree (Semgrep runs `git ls-files`). Config from the environment outranks every
+# config file, the repository's own included.
+ENV GIT_CONFIG_COUNT=1 \
+    GIT_CONFIG_KEY_0=core.fsmonitor \
+    GIT_CONFIG_VALUE_0=false
 
 USER warden
 

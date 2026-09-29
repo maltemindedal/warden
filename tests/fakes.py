@@ -1,7 +1,10 @@
 from __future__ import annotations
 
+import subprocess
 from dataclasses import dataclass, field
 from pathlib import Path
+
+import pytest
 
 from warden._models import CommandResult
 
@@ -14,6 +17,7 @@ class RecordedCommand:
     cwd: Path
     stderr_to_devnull: bool
     env_overrides: dict[str, str] | None
+    timeout: float | None = None
 
 
 @dataclass(slots=True)
@@ -23,6 +27,9 @@ class RecordingRunner:
     returncode: int | None = 0
     warning: str | None = None
     report_text: str | None = None
+    report_texts: dict[str, str] = field(default_factory=dict[str, str])
+    """What to write for a given report file name, instead of `report_text`."""
+    timed_out: bool = False
     commands: list[RecordedCommand] = field(default_factory=list[RecordedCommand])
 
     def __call__(
@@ -32,17 +39,26 @@ class RecordingRunner:
         cwd: Path,
         stderr_to_devnull: bool = False,
         env_overrides: dict[str, str] | None = None,
+        timeout: float | None = None,
     ) -> CommandResult:
         command = RecordedCommand(
             args=list(args),
             cwd=cwd,
             stderr_to_devnull=stderr_to_devnull,
             env_overrides=env_overrides,
+            timeout=timeout,
         )
         self.commands.append(command)
-        if self.report_text is not None:
-            self._write_report(command, self.report_text)
-        return CommandResult(returncode=self.returncode, warning=self.warning)
+        text = self.report_texts.get(self._report_name(command), self.report_text)
+        if text is not None:
+            self._write_report(command, text)
+        return CommandResult(
+            returncode=self.returncode, warning=self.warning, timed_out=self.timed_out
+        )
+
+    @staticmethod
+    def _report_name(command: RecordedCommand) -> str:
+        return next((Path(arg).name for arg in command.args if arg.endswith(".json")), "")
 
     @staticmethod
     def _write_report(command: RecordedCommand, text: str) -> None:
@@ -51,3 +67,21 @@ class RecordingRunner:
             if arg.endswith(".json"):
                 (command.cwd / arg).write_text(text, encoding="utf-8")
                 return
+
+
+def symlink_or_skip(link: Path, target: Path) -> None:
+    """Symlinks need a privilege on some Windows setups, and the behavior under test needs one."""
+    try:
+        link.symlink_to(target)
+    except (OSError, NotImplementedError):
+        pytest.skip("this platform cannot create symlinks")
+
+
+def skip_unless_executable(script: Path) -> None:
+    """A temporary directory mounted noexec cannot run the stub scripts a test writes there."""
+    try:
+        runs = subprocess.run([str(script)], check=False, timeout=30).returncode == 0
+    except OSError:
+        runs = False
+    if not runs:
+        pytest.skip("this temporary directory cannot execute files")

@@ -102,8 +102,12 @@ def _parse_args(argv: list[str] | None = None) -> AggregateCliOptions:
     )
     parser.add_argument("output_file", help="Path to write the aggregated JSON report")
     namespace = parser.parse_args(argv)
+    report_dir = Path(cast(str, namespace.report_dir)).resolve()
+    if not report_dir.is_dir():
+        # A missing directory is not "no reports": a typo would otherwise print PASS.
+        parser.error(f"report_dir {report_dir} is not an existing directory")
     return AggregateCliOptions(
-        report_dir=Path(cast(str, namespace.report_dir)).resolve(),
+        report_dir=report_dir,
         output_file=Path(cast(str, namespace.output_file)).resolve(),
     )
 
