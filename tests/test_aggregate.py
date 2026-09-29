@@ -4,6 +4,7 @@ import json
 import shutil
 from pathlib import Path
 
+import pytest
 from pytest import CaptureFixture
 
 from warden._json import get_int, load_json
@@ -14,6 +15,14 @@ from warden._summary import judge, print_summary
 from warden.aggregate import build_report, main
 
 FIXTURE_DIR = Path(__file__).parent / "fixtures"
+
+
+@pytest.fixture(autouse=True)
+def _plain_console(monkeypatch: pytest.MonkeyPatch) -> None:
+    """rich reads these when a Console is created, so without this the output depends on them."""
+    monkeypatch.delenv("FORCE_COLOR", raising=False)
+    monkeypatch.delenv("TTY_COMPATIBLE", raising=False)
+    monkeypatch.setenv("COLUMNS", "200")
 
 
 def _copy_fixture(name: str, destination: Path) -> None:
@@ -163,6 +172,25 @@ def test_print_summary_renders_a_table_for_a_failing_verdict(
     assert "SCAN COMPLETE" in output
     assert "Critical" in output
     assert "FAIL: High/Critical issues found. See security_audit.json" in output
+
+
+@pytest.mark.parametrize(
+    "output_file",
+    [
+        "proj[/red]x/a.json",
+        "proj[bold]x/a.json",
+        "x:warning:y/a.json",
+        "C:\\Users\\me\\[2024] Proj\\a.json",
+        "C:\\proj\\",
+    ],
+)
+def test_print_summary_shows_a_path_literally_even_if_it_looks_like_rich_markup(
+    capsys: CaptureFixture[str], output_file: str
+) -> None:
+    """A project directory name must not be able to crash or rewrite the status line."""
+    print_summary(verdict=judge(_findings("CRITICAL")), output_file=output_file)
+
+    assert capsys.readouterr().out.splitlines()[-1].endswith(f"See {output_file}")
 
 
 def test_aggregate_main_exits_non_zero_when_a_critical_finding_is_present(tmp_path: Path) -> None:
