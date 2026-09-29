@@ -41,11 +41,14 @@ Output like this means a scanner did not run cleanly:
 then bases its verdict on whatever reports exist. A scan can print `PASS` while a
 scanner never ran.
 
-Two causes:
+Three causes:
 
 - **`... was not found on PATH.`** The binary is missing. Re-run the installer,
   or use the [Docker image](running-with-docker.md), which bundles all three
   static scanners.
+- **`... could not be started: <reason>`** The binary is there but the
+  operating system would not run it, for example `Permission denied` on a file
+  that is not executable. The other scanners still run.
 - **`... exited with status N.`** The tool ran and failed. Its stderr is
   suppressed for Semgrep and Gitleaks, so run the tool directly to see why.
 

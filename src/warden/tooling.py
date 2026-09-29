@@ -107,6 +107,12 @@ def run_subprocess(
         )
     except FileNotFoundError:
         return CommandResult(returncode=None, warning=f"{args[0]} was not found on PATH.")
+    except OSError as error:
+        # Present but not runnable: not executable, wrong format, or a working directory that is
+        # not one. Like a missing tool this is a warning, so the other scanners still run.
+        return CommandResult(
+            returncode=None, warning=f"{args[0]} could not be started: {error.strerror or error}"
+        )
 
     return CommandResult(returncode=completed.returncode)
 

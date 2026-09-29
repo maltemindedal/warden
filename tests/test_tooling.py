@@ -422,6 +422,46 @@ def test_run_subprocess_warns_when_the_executable_is_missing(tmp_path: Path) -> 
     assert result.warning == "warden-no-such-scanner was not found on PATH."
 
 
+@pytest.mark.skipif(sys.platform == "win32", reason="POSIX permission bits and exec formats")
+@pytest.mark.parametrize(
+    ("mode", "content", "reasons"),
+    [
+        (0o644, "#!/bin/sh\nexit 0\n", ("Permission denied",)),
+        # A temporary directory mounted noexec answers EACCES before the kernel looks at the format.
+        (0o755, "not an executable format\n", ("Exec format error", "Permission denied")),
+    ],
+)
+def test_a_tool_that_cannot_be_started_warns_instead_of_aborting_the_audit(
+    tmp_path: Path, mode: int, content: str, reasons: tuple[str, ...]
+) -> None:
+    """These raised out of `subprocess.run`, so the remaining scanners never ran."""
+    bin_dir = tmp_path / "bin"
+    bin_dir.mkdir()
+    tool = bin_dir / "warden-broken-scanner"
+    tool.write_text(content, encoding="utf-8")
+    tool.chmod(mode)
+
+    result = tooling.run_subprocess(
+        ["warden-broken-scanner"], cwd=tmp_path, env_overrides={"PATH": str(bin_dir)}
+    )
+
+    assert result.returncode is None
+    assert result.warning in {f"warden-broken-scanner could not be started: {r}" for r in reasons}
+
+
+def test_a_working_directory_that_is_a_file_warns_instead_of_aborting_the_audit(
+    tmp_path: Path,
+) -> None:
+    a_file = tmp_path / "a-file"
+    a_file.write_text("", encoding="utf-8")
+
+    result = tooling.run_subprocess([sys.executable, "-c", "pass"], cwd=a_file)
+
+    assert result.returncode is None
+    assert result.warning is not None
+    assert result.warning.startswith(f"{sys.executable} could not be started")
+
+
 def test_a_scanner_that_is_missing_warns_instead_of_raising(tmp_path: Path) -> None:
     runner = RecordingRunner(returncode=None, warning="trivy was not found on PATH.")
 
