@@ -1,5 +1,11 @@
-# Version updates for what the repository pins. A release has to be at least seven days old
-# before a pull request is opened for it, the same window as `exclude-newer` in pyproject.toml.
+# Version updates for what the repository pins. Each ecosystem has a seven-day cooldown, the
+# same window as `exclude-newer` in pyproject.toml, with one exception: Dependabot applies it to
+# the docker ecosystem only for Docker Hub images, so a pull request for the `ghcr.io/astral-sh/uv`
+# stage is opened the day the release appears. Check the release's age before merging it.
+#
+# uv is also pinned in install.sh (UV_VERSION) and install.ps1 ($UvVersion). Dependabot cannot
+# edit those, so a uv-stage pull request fails CI (a test compares the three) until the two
+# scripts are changed to the same version in the same pull request.
 #
 # Not covered, because Dependabot cannot read them: the Trivy and Gitleaks versions and
 # digests (Dockerfile build args, mirrored in install.sh). Bump those by hand, together.

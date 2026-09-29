@@ -17,8 +17,9 @@ The image pins what it downloads. uv comes from a build stage pinned by version 
 digest (`ghcr.io/astral-sh/uv`), and Trivy and Gitleaks are fetched at a fixed
 version whose release archive must match a SHA-256 recorded in the `Dockerfile`, one
 per architecture (amd64 and arm64). A download that does not match fails the build.
-Nothing is piped into a shell, and updating means editing the `Dockerfile` (the
-`uv` stage is also tracked by Dependabot, see `.github/dependabot.yml`).
+Nothing is piped into a shell, and updating means editing the `Dockerfile`. The `uv`
+stage is also tracked by Dependabot (see `.github/dependabot.yml`), and the same uv
+version is pinned in `install.sh` and `install.ps1`.
 
 To build with other scanner versions, pass the version **and** its digests. Both
 versions are given without a leading `v`, and the digests are the archive's line in

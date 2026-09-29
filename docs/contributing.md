@@ -114,10 +114,16 @@ settings. Run `uv lock` after editing it; CI and the image build install with
 
 `.github/dependabot.yml` opens pull requests for the `uv` lock, the pinned GitHub
 Actions and the Dockerfile's `FROM` lines (the uv stage and the Python base, held
-to 3.11), waiting seven days after a release like the cooldown above. The Trivy
-and Gitleaks versions and digests are Dockerfile build args that Dependabot cannot
-read: change them by hand, in the `Dockerfile` and in `install.sh` together (a test
-fails if the two disagree).
+to 3.11), waiting seven days after a release like the cooldown above. There is one
+exception: for the Dockerfile Dependabot applies that wait only to Docker Hub images,
+so a pull request for the uv stage (`ghcr.io/astral-sh/uv`) appears as soon as the
+release does. Check the release's age before merging it, and change `UV_VERSION` in
+`install.sh` and `$UvVersion` in `install.ps1` to the same version in that pull
+request (a test fails until all three agree).
+
+The Trivy and Gitleaks versions and digests are Dockerfile build args that
+Dependabot cannot read: change them by hand, in the `Dockerfile` and in `install.sh`
+together (a test fails if the two disagree).
 
 ## CI
 
