@@ -10,7 +10,7 @@ readme = "README.md"
 license = { file = "LICENSE" }
 requires-python = ">=3.11"
 authors = [{ name = "maltemindedal" }]
-dependencies = ["rich>=13.9,<15", "semgrep>=1.128,<2"]
+dependencies = ["rich>=13.9,<16", "semgrep>=1.128,<2"]
 
 [project.scripts]
 warden = "warden.cli:main"
