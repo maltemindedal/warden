@@ -61,11 +61,11 @@ docker run --rm --user "$(id -u):$(id -g)" -v "$(pwd):/src" warden:local --help
 
 The image runs as an unprivileged user (`warden`, UID 10001). Without
 `--user`, the container writes as UID 10001, which will not have permission to
-create files in a bind-mounted directory owned by you. The scan fails partway
-through with:
+create files in a bind-mounted directory owned by you. The run stops before any
+scanner starts, with:
 
 ```
-PermissionError: [Errno 13] Permission denied: '/src/.security_reports/semgrep.json'
+warden: error: cannot prepare the report paths: /src/.security_reports: Permission denied
 ```
 
 Passing `--user "$(id -u):$(id -g)"` runs the container as you, so the report

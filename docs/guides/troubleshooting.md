@@ -84,14 +84,16 @@ If `"url"` is empty while `"zap"` is `false`, that is the cause: **`tools.zap:
 false` blanks the URL after the CLI flag is applied**, so an explicit `--url`
 cannot override it. Remove `zap: false` from `.warden.yaml`.
 
-## `PermissionError` when running the Docker image
+## `Permission denied` when running the Docker image
 
 ```
-PermissionError: [Errno 13] Permission denied: '/src/.security_reports/semgrep.json'
+warden: error: cannot prepare the report paths: /src/.security_reports: Permission denied
 ```
 
-The image runs as an unprivileged user that cannot write to your bind mount. Add
-the `--user` flag:
+The message names `.security_reports` when the directory cannot be created, or a
+report inside it (`.../trivy.json`) when it exists from an earlier run under another
+user. Either way it comes before any scanner starts. The image runs as an
+unprivileged user that cannot write to your bind mount. Add the `--user` flag:
 
 ```bash
 docker run --rm --user "$(id -u):$(id -g)" -v "$(pwd):/src" warden:local
