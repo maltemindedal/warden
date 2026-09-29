@@ -52,6 +52,9 @@ def test_parse_minimal_yaml_strips_comments_but_keeps_an_escaped_hash() -> None:
         ('target_url: "http://app/path#frag"', "http://app/path#frag"),
         ("target_url: 'http://app/#/login'  # the app", "http://app/#/login"),
         ("target_url: 'it''s # not a comment'", "it''s # not a comment"),
+        # A backslash escapes a quote inside double quotes, but not inside single quotes.
+        ('target_url: "a\\"#b"', 'a\\"#b'),
+        ("target_url: 'http://a/b\\'  # the app's url", "http://a/b\\"),
         # Unquoted, a `#` still starts a comment, as it always did.
         ("target_url: http://localhost:4200/#/login", "http://localhost:4200/"),
         # A quote only opens a value where a value starts, and only if it is closed.
@@ -61,6 +64,12 @@ def test_parse_minimal_yaml_strips_comments_but_keeps_an_escaped_hash() -> None:
 )
 def test_a_hash_inside_a_quoted_value_is_part_of_the_value(line: str, expected: str) -> None:
     assert parse_minimal_yaml(line)["target_url"] == expected
+
+
+def test_a_single_quoted_list_item_ending_in_a_backslash_still_has_its_comment_stripped() -> None:
+    raw_config = parse_minimal_yaml("exclude_dirs:\n  - 'build\\'  # don't scan\n  - keep/\n")
+
+    assert raw_config["exclude_dirs"] == ["build\\", "keep/"]
 
 
 def test_a_hash_inside_a_quoted_list_item_is_part_of_the_item() -> None:

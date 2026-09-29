@@ -24,12 +24,16 @@ _MAX_WARNINGS = 10
 
 
 def _closing_quote(line: str, start: int) -> int | None:
-    """Where the quote opened at `start` closes, or `None`. Honours `\\` and a doubled `'`."""
+    """Where the quote opened at `start` closes, or `None`.
+
+    A backslash escapes the next character only inside double quotes, and a doubled `'` is one
+    quote only inside single quotes: YAML single quotes have no other escape.
+    """
     quote = line[start]
     index = start + 1
     while index < len(line):
         character = line[index]
-        if character == "\\":
+        if character == "\\" and quote == '"':
             index += 2
             continue
         if character == quote:
