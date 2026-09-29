@@ -18,7 +18,7 @@ warden-config = "warden.config:main"
 warden-aggregate = "warden.aggregate:main"
 
 [dependency-groups]
-dev = ["pytest>=9.0.3,<10", "pytest-cov>=7.1,<8", "ruff>=0.11.6,<0.12", "ty>=0.0.73,<0.1"]
+dev = ["pytest>=9.0.3,<10", "pytest-cov>=7.1,<8", "ruff>=0.16.8,<0.17", "ty>=0.0.73,<0.1"]
 
 [tool.uv]
 # Dependency cooldown: ignore distributions published in the last 7 days, so a
@@ -66,6 +66,9 @@ src = ["src", "tests"]
 select = ["B", "E", "F", "I", "UP", "W"]
 
 [tool.ruff.format]
+# ruff 0.16 formats Markdown by default. Keep the check on Python files, which is what it
+# covered before, and leave vendored docs (.agents/skills, hash-tracked) untouched.
+exclude = ["*.md"]
 docstring-code-format = true
 quote-style = "double"
 indent-style = "space"
