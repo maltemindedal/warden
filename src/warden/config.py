@@ -178,7 +178,7 @@ def resolve_config(
     # user's own choice and is read as it always was, whatever kind of file it is.
     if path.exists() if config_path is not None else path.is_file():
         try:
-            raw = parse_minimal_yaml(path.read_text(encoding="utf-8"))
+            raw = parse_minimal_yaml(path.read_text(encoding="utf-8-sig"))
         except (OSError, UnicodeDecodeError, ValueError):
             raw = {}
 

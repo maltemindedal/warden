@@ -193,6 +193,25 @@ def test_a_config_passed_explicitly_may_be_a_pipe(tmp_path: Path) -> None:
     assert "trivy" not in resolved.enabled_tools
 
 
+@pytest.mark.parametrize(
+    ("text", "url", "gitleaks_enabled"),
+    [
+        ('target_url: "http://localhost:3000"\n', "http://localhost:3000", True),
+        ("tools:\n  gitleaks: false\n", "", False),
+    ],
+)
+def test_a_utf8_byte_order_mark_does_not_swallow_the_first_key(
+    tmp_path: Path, text: str, url: str, gitleaks_enabled: bool
+) -> None:
+    """Windows editors write a BOM; it used to become part of the first key, which was ignored."""
+    (tmp_path / ".warden.yaml").write_bytes(b"\xef\xbb\xbf" + text.encode("utf-8"))
+
+    resolved = resolve_config(project_root=tmp_path, cli_url="")
+
+    assert resolved.url == url
+    assert ("gitleaks" in resolved.enabled_tools) is gitleaks_enabled
+
+
 def test_config_main_reports_every_scanner_as_enabled_by_default(
     tmp_path: Path,
     capsys: CaptureFixture[str],
