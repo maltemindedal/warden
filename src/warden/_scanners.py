@@ -2,7 +2,6 @@ from __future__ import annotations
 
 import os
 import re
-import unicodedata
 from collections.abc import Callable
 from dataclasses import dataclass
 from pathlib import Path
@@ -45,7 +44,7 @@ CommandBuilder = Callable[[ScanRequest], Command]
 # authority up to the first `/`, `?` or `#`, whose host follows its last `@`.
 _URL_LEAD: Final = re.compile(r"(?:[A-Za-z][A-Za-z0-9+.-]*:)?//")
 _AUTHORITY_END: Final = re.compile(r"[/?#]")
-_HTTP_LEAD: Final = re.compile(r"https?://", re.IGNORECASE)
+_HTTP_LEAD: Final = re.compile(r"https?://")
 _LOOPBACK_HOST: Final = re.compile(r"(?:localhost|127\.0\.0\.1)(?P<dot>\.?)(?=:|\Z)")
 
 
@@ -71,14 +70,15 @@ def rewrite_zap_target(url: str) -> str:
 def url_problem(url: str) -> str | None:
     """Why `url` cannot be a DAST target, or `None` if it looks like one.
 
-    ZAP only takes an `http://` or `https://` target with a host. A project supplies the URL, so
-    a control character in it (an escape sequence, say) must never reach the terminal either.
+    ZAP only takes an `http://` or `https://` target with a host, and its check is a literal
+    lowercase prefix test. A project supplies the URL, so an escape sequence, a bidirectional
+    override or any other character that is not plainly printable must never reach the terminal.
     """
-    if any(unicodedata.category(character) == "Cc" for character in url):
-        return "it contains control characters"
+    if not url.isprintable():
+        return "it contains control or non-printable characters"
     lead = _HTTP_LEAD.match(url)
     if lead is None:
-        return "it does not start with http:// or https://"
+        return "it does not start with http:// or https:// (lowercase, as ZAP requires)"
     boundary = _AUTHORITY_END.search(url, lead.end())
     authority = url[lead.end() : boundary.start() if boundary else len(url)]
     host_and_port = authority.rpartition("@")[2]

@@ -214,7 +214,14 @@ def test_a_directory_where_the_report_goes_is_a_clear_error_after_the_scans_ran(
 
 @pytest.mark.parametrize(
     "url",
-    ["localhost:3000", "ftp://example.com", "http://", "http://example.com/\x1b[31mred"],
+    [
+        "localhost:3000",
+        "ftp://example.com",
+        "http://",
+        "HTTP://example.com",
+        "http://example.com/\x1b[31mred",
+        "http://example.com/\u202egpj.exe",
+    ],
 )
 def test_an_unusable_dast_url_is_a_warning_and_zap_is_skipped(
     tmp_path: Path, capsys: CaptureFixture[str], url: str
@@ -231,6 +238,7 @@ def test_an_unusable_dast_url_is_a_warning_and_zap_is_skipped(
     assert "DAST URL:" not in output
     assert "[4/4] Skipping ZAP" in output
     assert "\x1b" not in output
+    assert "\u202e" not in output
 
 
 def test_a_usable_dast_url_is_announced_and_scanned(

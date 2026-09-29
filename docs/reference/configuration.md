@@ -59,8 +59,8 @@ stderr (its stdout stays JSON), and at most ten are shown. Verify with
 | Alias | `url` |
 
 DAST target for OWASP ZAP. When empty, ZAP is skipped. It must start with
-`http://` or `https://` and have a host; anything else is reported with a warning
-and ZAP is skipped.
+lowercase `http://` or `https://`, have a host and hold only printable characters;
+anything else is reported with a warning and ZAP is skipped.
 
 `url` is accepted as an alias. If both are present, `target_url` wins.
 
