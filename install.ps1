@@ -44,8 +44,9 @@ if (!(Get-Command gitleaks -ErrorAction SilentlyContinue)) {
 }
 
 # `uv tool install` ignores this repository's uv.lock and its [tool.uv] settings, including the
-# seven-day cooldown on new releases, so the cooldown is passed explicitly. A uv that cannot read
-# it would silently install the newest of everything, so refuse instead.
+# seven-day cooldown on new releases, so the cooldown is passed explicitly. A uv older than
+# $UvMinVersion rejects `--exclude-newer "7 days"` with a bare parse error, so say what is
+# wrong and what to do before it gets that far.
 if ((& uv --version) -match '(\d+\.\d+\.\d+)') {
     $UvInstalled = [version]$Matches[1]
     if ($UvInstalled -lt $UvMinVersion) {

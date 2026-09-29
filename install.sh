@@ -111,7 +111,12 @@ install_trivy() {
 		rm -f "$archive"
 		return 1
 	}
-	$SUDO tar -xz -C "$BIN_DIR" -f "$archive" trivy
+	# --no-same-owner: as root, tar would otherwise keep the owner recorded in the archive, and a
+	# scanner binary in a system directory would belong to an unrelated user id.
+	$SUDO tar -xz --no-same-owner -C "$BIN_DIR" -f "$archive" trivy || {
+		rm -f "$archive"
+		return 1
+	}
 	rm -f "$archive"
 }
 
@@ -138,7 +143,12 @@ install_gitleaks() {
 		rm -f "$archive"
 		return 1
 	}
-	$SUDO tar -xz -C "$BIN_DIR" -f "$archive" gitleaks
+	# --no-same-owner: as root, tar would otherwise keep the owner recorded in the archive, and a
+	# scanner binary in a system directory would belong to an unrelated user id.
+	$SUDO tar -xz --no-same-owner -C "$BIN_DIR" -f "$archive" gitleaks || {
+		rm -f "$archive"
+		return 1
+	}
 	rm -f "$archive"
 }
 
@@ -175,8 +185,9 @@ version_at_least() {
 }
 
 # `uv tool install` ignores this repository's uv.lock and its [tool.uv] settings, including the
-# seven-day cooldown on new releases, so the cooldown is passed explicitly. A uv that cannot read
-# it would silently install the newest of everything, so refuse instead.
+# seven-day cooldown on new releases, so the cooldown is passed explicitly. A uv older than
+# UV_MIN_VERSION rejects `--exclude-newer "7 days"` with a bare parse error, so say what is
+# wrong and what to do before it gets that far.
 uv_version="$(uv --version | awk '{print $2}')"
 if ! version_at_least "$uv_version" "$UV_MIN_VERSION"; then
 	echo -e "${RED}uv $uv_version is too old: this install needs uv $UV_MIN_VERSION or newer.${NC}"

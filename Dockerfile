@@ -57,7 +57,7 @@ RUN set -eu; \
     esac; \
     curl -fsSL "https://github.com/aquasecurity/trivy/releases/download/v${TRIVY_VERSION}/trivy_${TRIVY_VERSION}_${archive}.tar.gz" -o /tmp/trivy.tgz; \
     echo "${sha256}  /tmp/trivy.tgz" | sha256sum -c -; \
-    tar -xzf /tmp/trivy.tgz -C /usr/local/bin trivy; \
+    tar -xzf /tmp/trivy.tgz --no-same-owner -C /usr/local/bin trivy; \
     rm -f /tmp/trivy.tgz
 
 # Gitleaks
@@ -69,7 +69,7 @@ RUN set -eu; \
     esac; \
     curl -fsSL "https://github.com/gitleaks/gitleaks/releases/download/v${GITLEAKS_VERSION}/gitleaks_${GITLEAKS_VERSION}_${archive}.tar.gz" -o /tmp/gitleaks.tgz; \
     echo "${sha256}  /tmp/gitleaks.tgz" | sha256sum -c -; \
-    tar -xzf /tmp/gitleaks.tgz -C /usr/local/bin gitleaks; \
+    tar -xzf /tmp/gitleaks.tgz --no-same-owner -C /usr/local/bin gitleaks; \
     rm -f /tmp/gitleaks.tgz
 
 # uv, for the Warden runtime dependencies below
