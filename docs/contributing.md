@@ -3,7 +3,8 @@
 ## Development environment
 
 Warden uses [uv](https://docs.astral.sh/uv/) for dependency and environment
-management. From a clone:
+management. You need uv 0.9.17 or newer, because the dependency cooldown below
+is a relative duration that older releases cannot parse. From a clone:
 
 ```bash
 uv sync --python 3.11
@@ -11,10 +12,10 @@ uv sync --python 3.11
 
 This creates a virtual environment with the runtime and development
 dependencies. To reproduce CI exactly, install from the lockfile without
-updating it:
+updating it; this fails if `uv.lock` has drifted from `pyproject.toml`:
 
 ```bash
-uv sync --frozen
+uv sync --locked
 ```
 
 Run the CLI from the checkout without installing it:
@@ -90,7 +91,9 @@ Two constraints in `[tool.uv]` are deliberate and will affect you:
 - **`exclude-newer = "7 days"`** sets a dependency cooldown. Distributions
   published in the last seven days are not resolvable, so a new release
   cannot be pulled in silently. If a lock fails on a very recent version, this is
-  why; wait for it to age out rather than removing the setting.
+  why; wait for it to age out rather than removing the setting. A relative
+  duration needs uv 0.9.17 or newer; older releases cannot parse it, skip the
+  cooldown, re-resolve, and `uv sync --locked` fails.
 - **`override-dependencies = ["mcp>=1.28.1,<2"]`** overrides the
   `mcp==1.23.3` pin of Semgrep 1.146 to 1.172 (older releases pin older mcp
   releases or none), which carries known advisories. Warden uses Semgrep's CLI scanner and never its MCP server, so the
@@ -100,14 +103,18 @@ Two constraints in `[tool.uv]` are deliberate and will affect you:
   locked the override only serves as the cap, and a relock can move mcp past that
   pin: use `uv lock --upgrade-package mcp==<the pin>` to keep them in step.
 
-Commit `uv.lock` alongside any dependency change.
+Commit `uv.lock` alongside any change to `pyproject.toml` that affects resolution:
+dependency bounds, `requires-python`, the project version or `[tool.uv]`
+settings. Run `uv lock` after editing it; CI and the image build install with
+`--locked`, so a stale lock fails them.
 
 ## CI
 
 `.github/workflows/ci.yml` runs on pushes to `main`, on pull requests, and on
 manual dispatch:
 
-- `quality` runs the four checks above on Ubuntu with Python 3.11.
+- `quality` runs the four checks above on Ubuntu with Python 3.11, installing
+  with `uv sync --locked` and `UV_LOCKED=1`, so it fails on a stale `uv.lock`.
 - `scan` runs Warden against this repository after `quality` passes.
 
 The `scan` job means the project scans itself: a change that introduces a High

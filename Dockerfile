@@ -65,7 +65,7 @@ COPY pyproject.toml uv.lock README.md LICENSE ./
 COPY src/ ./src/
 COPY bin/ ./bin/
 
-RUN uv sync --frozen --no-dev \
+RUN uv sync --locked --no-dev \
  && chmod +x ./bin/warden ./bin/warden.sh \
  && ln -sf /opt/warden/.venv/bin/warden /usr/local/bin/warden
 
