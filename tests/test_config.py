@@ -10,6 +10,7 @@ from pathlib import Path
 import pytest
 from pytest import CaptureFixture
 
+from fakes import symlink_or_skip
 from warden._scanners import SCANNERS, ZAP
 from warden.config import main, parse_minimal_yaml, resolve_config
 
@@ -238,6 +239,27 @@ def test_a_value_that_int_cannot_read_does_not_cost_the_rest_of_the_config(
     resolved = resolve_config(project_root=tmp_path, cli_url="")
 
     assert "gitleaks" not in resolved.enabled_tools
+
+
+def test_a_config_path_the_system_refuses_to_look_up_is_treated_as_absent(tmp_path: Path) -> None:
+    """A component longer than NAME_MAX made `Path.exists()` raise ENAMETOOLONG (before 3.14)."""
+    too_long = tmp_path / ("a" * 300)
+
+    resolved = resolve_config(project_root=tmp_path, cli_url="", config_path=too_long)
+
+    assert resolved.url == ""
+    assert all(scanner.key in resolved.enabled_tools for scanner in SCANNERS)
+
+
+def test_a_project_config_the_system_refuses_to_look_up_is_treated_as_absent(
+    tmp_path: Path,
+) -> None:
+    """The project controls its own `.warden.yaml`: a link to an over-long name must not crash."""
+    symlink_or_skip(tmp_path / ".warden.yaml", tmp_path / ("a" * 300))
+
+    resolved = resolve_config(project_root=tmp_path, cli_url="")
+
+    assert all(scanner.key in resolved.enabled_tools for scanner in SCANNERS)
 
 
 def test_config_main_reports_every_scanner_as_enabled_by_default(
