@@ -112,6 +112,13 @@ dependency bounds, `requires-python`, the project version or `[tool.uv]`
 settings. Run `uv lock` after editing it; CI and the image build install with
 `--locked`, so a stale lock fails them.
 
+`.github/dependabot.yml` opens pull requests for the `uv` lock, the pinned GitHub
+Actions and the Dockerfile's `FROM` lines (the uv stage and the Python base, held
+to 3.11), waiting seven days after a release like the cooldown above. The Trivy
+and Gitleaks versions and digests are Dockerfile build args that Dependabot cannot
+read: change them by hand, in the `Dockerfile` and in `install.sh` together (a test
+fails if the two disagree).
+
 ## CI
 
 `.github/workflows/ci.yml` runs on pushes to `main`, on pull requests, and on

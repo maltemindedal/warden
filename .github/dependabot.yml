@@ -1,0 +1,36 @@
+# Version updates for what the repository pins. A release has to be at least seven days old
+# before a pull request is opened for it, the same window as `exclude-newer` in pyproject.toml.
+#
+# Not covered, because Dependabot cannot read them: the Trivy and Gitleaks versions and
+# digests (Dockerfile build args, mirrored in install.sh). Bump those by hand, together.
+version: 2
+updates:
+  # uv.lock and the constraints in pyproject.toml.
+  - package-ecosystem: uv
+    directory: /
+    schedule:
+      interval: weekly
+    cooldown:
+      default-days: 7
+
+  # The pinned actions in .github/workflows and in the root action.yml.
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: weekly
+    cooldown:
+      default-days: 7
+
+  # The `FROM` lines of the Dockerfile: the uv stage (version and digest) and the Python base.
+  - package-ecosystem: docker
+    directory: /
+    schedule:
+      interval: weekly
+    cooldown:
+      default-days: 7
+    ignore:
+      # Warden supports Python 3.11 and the image stays on it; a newer minor is a decision.
+      - dependency-name: python
+        update-types:
+          - version-update:semver-major
+          - version-update:semver-minor
