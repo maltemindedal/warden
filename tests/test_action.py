@@ -198,3 +198,9 @@ def test_a_directory_whose_name_only_starts_like_the_workspace_is_outside_it(
 
     assert completed.returncode == 0, completed.stdout
     assert step.warden_args() == ["--config", "/warden-config.yaml"]
+
+
+def test_the_upload_step_does_not_publish_hidden_files() -> None:
+    """`.security_reports/**` is hidden, so only the aggregate report is uploaded."""
+    text = ACTION_YML.read_text(encoding="utf-8")
+    assert "include-hidden-files: true" not in text[text.index("- name: Upload reports") :]

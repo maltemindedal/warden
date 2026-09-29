@@ -27,7 +27,8 @@ it only runs when you give it one.
 - **Git**, to clone the repository.
 
 You do not need to install Trivy, Semgrep, or Gitleaks yourself. The installer
-handles Trivy and Gitleaks; Semgrep arrives as a Python dependency.
+handles Trivy and Gitleaks; Semgrep arrives as a Python dependency. A Trivy you
+install yourself must be 0.37 or newer.
 
 ## Step 1: Install
 

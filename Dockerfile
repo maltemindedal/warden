@@ -103,8 +103,8 @@ ENV HOME=/var/tmp/warden \
     TRIVY_CACHE_DIR=/var/tmp/warden/cache/trivy \
     SEMGREP_SETTINGS_FILE=/var/tmp/warden/config/semgrep/settings.yml
 
-# /src is owned by the host user, so git (and therefore gitleaks) would otherwise
-# refuse to operate on it under a different uid. Set system-wide rather than via
+# /src is owned by the host user, so git (which Semgrep runs, as `git ls-files`) would
+# otherwise refuse to operate on it under a different uid. Set system-wide rather than via
 # GIT_CONFIG_* env vars so it survives any HOME the caller supplies.
 RUN git config --system --add safe.directory '*'
 

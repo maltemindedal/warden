@@ -69,8 +69,8 @@ To enable DAST, add a `url`:
 ```
 
 Start the target application in an earlier step; the action does not start it
-for you. A `target_url` in the repository's own `.warden.yaml` is **not** used on a
-runner (it could come from a pull request, and it starts an active scan): DAST is
+for you. A `target_url` in the repository's own `.warden.yaml` is **not** used by the
+action (it could come from a pull request, and it starts an active scan): DAST is
 turned on by the `url` input, or by a `target_url` in a file given through the
 [`config` input](#gating-pull-requests), which the workflow's author chooses.
 
@@ -144,7 +144,9 @@ time before scanning starts.
 The artifact contains `security_audit.json`, in which Gitleaks findings are
 redacted. The action also lists `.security_reports/**`, but that directory starts
 with a dot and `actions/upload-artifact` skips hidden files unless it is given
-`include-hidden-files: true`, so the raw scanner reports are not uploaded. They
+`include-hidden-files: true`, so the raw scanner reports are not uploaded. The action
+deliberately does not set that input: it would publish every raw report on every
+consumer's next run. They
 stay on the runner in `.security_reports/`, where `gitleaks.json` shows where each
 secret is but not the secret itself (Gitleaks runs with `--redact`). Keep the
 artifact private anyway: it names every finding.
@@ -162,3 +164,11 @@ docker run --rm --user "$(id -u):$(id -g)" -v "$PWD:/src" warden:ci
 The non-zero exit fails the job. For DAST, add the socket mount and
 `WARDEN_HOST_WORKSPACE` as described in
 [Running with Docker](running-with-docker.md#report-paths-across-containers).
+
+The protection the action gives a `target_url` does not travel with this recipe. It
+keys on `GITHUB_WORKSPACE`, which the action passes into the container and a plain
+`docker run` does not, so here a `target_url` in the repository's own `.warden.yaml`
+is honored, and on a pull request it can start an active ZAP scan of an address the
+change chose. Mount a `.warden.yaml` from outside the change and pass it with
+`--config` (or set `tools: zap: false` in it), so the repository's own file is not
+read.

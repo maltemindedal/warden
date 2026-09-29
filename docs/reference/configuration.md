@@ -74,11 +74,15 @@ target_url: "http://localhost:3000"
 
 Overridden by the `--url` flag.
 
-**On a CI runner it is ignored.** When `GITHUB_WORKSPACE` is set (GitHub Actions
-sets it on every step), a `target_url` in the project's own `.warden.yaml` is not
-used, because that file can be changed by whoever opens a pull request and the
-URL starts an *active* scan. Warden prints a warning; pass `--url` (or the
-action's `url` input) to scan. A file given with `--config` is not affected.
+**It is ignored when `GITHUB_WORKSPACE` is set.** GitHub Actions sets it on every
+step and the bundled action passes it into the image, so under the action a
+`target_url` in the project's own `.warden.yaml` is not used: that file can be
+changed by whoever opens a pull request, and the URL starts an *active* scan.
+Warden prints a warning (unless `tools.zap` is `false`); pass `--url` (or the
+action's `url` input) to scan. A file given with `--config` is not affected. Where
+`GITHUB_WORKSPACE` is not passed through, which includes any other CI system, the
+project's `target_url` is used: see
+[Other CI systems](../guides/ci-github-actions.md#other-ci-systems).
 
 ### `exclude_dirs`
 
@@ -174,13 +178,14 @@ tools:
 
 Warden reads scanner selection and exclusions only from the config file and
 flags. The environment variables below control where the ZAP container mounts
-its output.
+its output, and `GITHUB_WORKSPACE` also decides whether the project's own
+`target_url` is used.
 
 | Variable | Read by | Effect |
 | --- | --- | --- |
 | `WARDEN_HOST_REPORT_DIR` | ZAP stage | Absolute host path to mount as ZAP's working directory. Highest precedence. |
 | `WARDEN_HOST_WORKSPACE` | ZAP stage | Host path to the project; `.security_reports` under it is mounted. |
-| `GITHUB_WORKSPACE` | ZAP stage | Same as above. Set automatically by GitHub Actions. Its presence also stops `target_url` in the project's `.warden.yaml` from being used. |
+| `GITHUB_WORKSPACE` | ZAP stage, config resolution | Same as above. Set automatically by GitHub Actions. Its presence also stops `target_url` in the project's `.warden.yaml` from being used. |
 
 These exist because ZAP runs in a sibling container. When Warden is itself
 running inside a container, the report path it sees is a container path, which

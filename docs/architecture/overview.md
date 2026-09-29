@@ -188,7 +188,8 @@ The image runs as UID 10001 rather than root. Because callers are expected to
 override the UID with `--user` to match the owner of the mounted project, the
 image cannot rely on a fixed home directory. Scanner caches and settings live
 under a world-writable `/var/tmp/warden`, and `safe.directory` is set
-system-wide so Gitleaks can read a repository owned by another user. The
+system-wide so git, which Semgrep runs (`git ls-files`), accepts a repository owned
+by another user. The
 environment also sets `core.fsmonitor=false`, which outranks the scanned
 project's own `.git/config`.
 

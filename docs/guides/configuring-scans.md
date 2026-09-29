@@ -79,7 +79,9 @@ target_url: "http://localhost:3000"
 ```
 
 `warden` now runs ZAP whenever that app is up. A `--url` flag on the command
-line takes precedence.
+line takes precedence. Under the GitHub Action the project's own `target_url` is
+ignored (pass the `url` input instead), see
+[the configuration reference](../reference/configuration.md#target_url).
 
 > Setting `tools.zap: false` clears the target URL after the CLI flag is applied.
 > With `zap: false` in your config, even

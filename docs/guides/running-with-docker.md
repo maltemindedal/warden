@@ -62,8 +62,8 @@ docker run --rm --user "$(id -u):$(id -g)" -v "$(pwd):/src" warden:local --help
 
 The image runs as an unprivileged user (`warden`, UID 10001). Without
 `--user`, the container writes as UID 10001, which will not have permission to
-create files in a bind-mounted directory owned by you. The run stops before any
-scanner starts, with:
+create files in a bind-mounted directory owned by you. The run normally stops
+before any scanner starts, with:
 
 ```
 warden: error: cannot prepare the report paths: /src/.security_reports: Permission denied
@@ -77,10 +77,10 @@ The flag is unnecessary there but harmless, so the commands above always use it.
 
 Because the container may run as any UID, the image keeps its scanner caches and
 settings under `/var/tmp/warden` rather than a fixed home directory, and sets
-`safe.directory` system-wide so Gitleaks can read a repository owned by a
-different user. Because the scanned tree is not trusted, it also switches
-`core.fsmonitor` off through the environment, so a `.git/config` shipped inside the
-project cannot run a command when a scanner calls `git`.
+`safe.directory` system-wide so git, which Semgrep runs (`git ls-files`), accepts a
+repository owned by a different user. Because the scanned tree is not trusted, it also
+switches `core.fsmonitor` off through the environment, so a `.git/config` shipped inside
+the project cannot run a command when a scanner calls `git`.
 
 ## Add a DAST scan
 
@@ -137,7 +137,9 @@ docker run --rm \
     warden:local --url "http://host.docker.internal:3000"
 ```
 
-The GitHub Action sets `GITHUB_WORKSPACE` for you. See
+The GitHub Action sets `GITHUB_WORKSPACE` for you. Passing it also stops the project's
+own `.warden.yaml` from supplying the `target_url` (`--url` still works), so prefer
+`WARDEN_HOST_WORKSPACE` if you want that file's target used. See
 [Configuration](../reference/configuration.md#environment-variables) for
 precedence.
 

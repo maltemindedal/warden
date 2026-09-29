@@ -55,7 +55,9 @@ Four causes:
   operating system would not run it, for example `Permission denied` on a file
   that is not executable. The other scanners still run.
 - **`... exited with status N.`** The tool ran and failed. Its stderr is
-  suppressed for Semgrep and Gitleaks, so run the tool directly to see why.
+  suppressed for Semgrep and Gitleaks, so run the tool directly to see why. A Trivy
+  older than 0.37 fails this way with `unknown flag: --scanners`, which Warden
+  passes: use 0.37 or newer (the installer and the image bring one).
 
 To make this a failure instead of a warning, run `warden --strict`: it exits `3`
 when a scanner that ran left no usable report (see the
@@ -91,9 +93,17 @@ warden: error: cannot prepare the report paths: /src/.security_reports: Permissi
 ```
 
 The message names `.security_reports` when the directory cannot be created, or a
-report inside it (`.../trivy.json`) when it exists from an earlier run under another
-user. Either way it comes before any scanner starts. The image runs as an
-unprivileged user that cannot write to your bind mount. Add the `--user` flag:
+report inside it (`.../trivy.json`, or whichever report is left) when it exists from
+an earlier run under another user. Either way it comes before any scanner starts. If
+`.security_reports` already exists, is not writable and holds no old report, the
+scanners run first and the run ends with this instead:
+
+```
+warden: error: cannot read the reports or write security_audit.json: /src/security_audit.json: Permission denied
+```
+
+The image runs as an unprivileged user that cannot write to your bind mount. Add the
+`--user` flag:
 
 ```bash
 docker run --rm --user "$(id -u):$(id -g)" -v "$(pwd):/src" warden:local
