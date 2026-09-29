@@ -57,6 +57,10 @@ include = [
 # ty's environment.root below must list the same roots.
 pythonpath = ["src", "tests"]
 testpaths = ["tests"]
+# Fail on a misspelled marker or config key, on any warning, and on an xfail that starts passing.
+addopts = ["--strict-markers", "--strict-config"]
+filterwarnings = ["error"]
+xfail_strict = true
 
 [tool.ruff]
 line-length = 100

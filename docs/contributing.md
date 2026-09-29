@@ -48,7 +48,7 @@ uv run ruff format .
 | `ruff format` | `[tool.ruff.format]` | 100-character lines, double quotes, spaces. |
 | `ruff check` | `[tool.ruff.lint]` | Rule sets `B`, `BLE`, `E`, `F`, `I`, `PGH`, `S`, `UP`, `W`. Import sorting is included via `I`; `S` is the bandit security rules (asserts and list-form `subprocess` calls are allowed in tests). |
 | `ty check` | `[tool.ty.*]` | **All rules as errors.** Targets Python 3.11 across `src` and `tests`. |
-| `pytest` | `[tool.pytest.ini_options]` | Tests live in `tests/`, with `src` on the path. |
+| `pytest` | `[tool.pytest.ini_options]` | Tests live in `tests/`, with `src` on the path. Unknown markers and config keys, any warning, and an `xfail` that passes are all errors. |
 
 ty runs with every rule promoted to an error (`[tool.ty.rules] all = "error"`),
 so new code needs complete type annotations, and an ignore comment that is no
@@ -66,6 +66,10 @@ parsing and severity normalisation without running the real scanners. Command
 execution is injected rather than patched: tests pass the recording
 `CommandRunner` in `tests/fakes.py` and assert on the command line that was
 built, so the suite runs without Trivy, Semgrep, Gitleaks, or Docker installed.
+
+Warnings are errors here. If a dependency warning you cannot fix fails the run,
+silence just that warning with a narrow `filterwarnings` ignore entry in
+`pyproject.toml` and a comment saying why.
 
 When adding support for a new field or tool, add a fixture. Using fixtures keeps
 the suite fast and deterministic.
