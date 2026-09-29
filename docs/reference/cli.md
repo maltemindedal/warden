@@ -42,7 +42,9 @@ PowerShell habits and POSIX shells. All four spellings set the same value.
   on the host. Only the host is rewritten, not the same text in the path or query.
 - The report directory `.security_reports/` is created inside the project root
   if absent, and `.security_reports/` is appended to the project's `.gitignore`
-  if that file exists and does not already list it.
+  if that file exists and does not already list it. A `.gitignore` that cannot be
+  read or written, or that is not text, is skipped with a warning and the audit
+  carries on; add the entry yourself, since the raw reports can hold sensitive data.
 - Warden never writes through a symlink at a path it owns, because the project
   it scans is not trusted. A symlink named `.security_reports` is replaced by a
   real directory, a symlink or named pipe named `security_audit.json` is replaced

@@ -103,6 +103,15 @@ The unprivileged container user is not in the socket's group. Add it:
 --group-add "$(stat -c '%g' /var/run/docker.sock)"
 ```
 
+## `Warning: could not add .security_reports/ to .gitignore`
+
+Warden keeps the raw reports out of version control by appending
+`.security_reports/` to the project's `.gitignore`. When it cannot (the file is
+read-only, or not text, such as a UTF-16 file) it prints this warning, gives the
+reason, and carries on with the scan. Nothing is ignored in that case, so add
+`.security_reports/` to your ignore rules yourself: the reports can hold
+matched secrets.
+
 ## Changes to `.warden.yaml` have no effect
 
 A config file that cannot be parsed is silently discarded and defaults are

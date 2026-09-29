@@ -46,14 +46,24 @@ def _ignore_report_dir(root: Path) -> None:
     if gitignore_path.is_symlink() or not gitignore_path.is_file():
         return
 
-    existing_lines = gitignore_path.read_text(encoding="utf-8").splitlines()
-    if any(line.strip() == ".security_reports/" for line in existing_lines):
-        return
+    # Best effort: this only keeps the reports out of version control, so an unreadable or
+    # unwritable `.gitignore` must not stop the audit. git reads the file as bytes, so a legacy
+    # encoding is fine to append to; a file with NULs (UTF-16) is not text git can use at all.
+    try:
+        raw = gitignore_path.read_bytes()
+        if b"\x00" in raw:
+            print("Warning: could not add .security_reports/ to .gitignore: not a text file")
+            return
+        existing_lines = raw.decode("utf-8", errors="replace").splitlines()
+        if any(line.strip() == ".security_reports/" for line in existing_lines):
+            return
 
-    with gitignore_path.open("a", encoding="utf-8") as handle:
-        if existing_lines and existing_lines[-1].strip():
-            handle.write("\n")
-        handle.write(".security_reports/\n")
+        with gitignore_path.open("a", encoding="utf-8") as handle:
+            if existing_lines and existing_lines[-1].strip():
+                handle.write("\n")
+            handle.write(".security_reports/\n")
+    except OSError as error:
+        print(f"Warning: could not add .security_reports/ to .gitignore: {error.strerror or error}")
 
 
 def prepare_report_dir(project_root: str | Path) -> Path:

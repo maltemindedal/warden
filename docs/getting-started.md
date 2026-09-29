@@ -132,8 +132,10 @@ Two things to understand about this output:
   what makes Warden usable as a CI gate.
 
 Full details are in `security_audit.json` next to your project, and each tool's
-raw output is in `.security_reports/`. Warden adds `.security_reports/` to your
-`.gitignore` automatically so those files are not committed.
+raw output is in `.security_reports/`. If your project has a `.gitignore`, Warden adds
+`.security_reports/` to it automatically so those files are not committed. If it
+cannot (an unwritable or non-text `.gitignore`) it warns and carries on; add the line
+yourself. Without a `.gitignore` it creates none.
 
 ## Step 5: Add a DAST scan (optional)
 

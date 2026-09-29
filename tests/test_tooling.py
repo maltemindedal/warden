@@ -7,6 +7,7 @@ import sys
 import time
 from collections.abc import Sequence
 from pathlib import Path
+from typing import Any
 
 import pytest
 from pytest import MonkeyPatch
@@ -536,6 +537,65 @@ def test_prepare_report_dir_appends_to_an_existing_gitignore(tmp_path: Path) -> 
     tooling.prepare_report_dir(tmp_path)
 
     assert ".security_reports/" in gitignore.read_text(encoding="utf-8").splitlines()
+
+
+def test_prepare_report_dir_does_not_list_the_report_dir_twice(tmp_path: Path) -> None:
+    gitignore = tmp_path / ".gitignore"
+    gitignore.write_text("*.log\n.security_reports/\n", encoding="utf-8")
+
+    tooling.prepare_report_dir(tmp_path)
+
+    assert gitignore.read_text(encoding="utf-8") == "*.log\n.security_reports/\n"
+
+
+def test_a_gitignore_in_a_legacy_encoding_is_appended_to_not_fatal(tmp_path: Path) -> None:
+    """A cp1252 `.gitignore` (an accented comment) used to abort the run with UnicodeDecodeError."""
+    gitignore = tmp_path / ".gitignore"
+    original = b"# caf\xe9\n*.log\n"
+    gitignore.write_bytes(original)
+
+    tooling.prepare_report_dir(tmp_path)
+
+    written = gitignore.read_bytes()
+    assert written.startswith(original)
+    assert written[len(original) :].split() == [b".security_reports/"]
+
+
+def test_a_gitignore_that_is_not_text_is_left_alone_with_a_warning(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """A UTF-16 file cannot be read by git, and appending ASCII to it would only corrupt it."""
+    gitignore = tmp_path / ".gitignore"
+    original = "*.log\n".encode("utf-16")
+    gitignore.write_bytes(original)
+
+    tooling.prepare_report_dir(tmp_path)
+
+    assert gitignore.read_bytes() == original
+    assert "could not add .security_reports/ to .gitignore: not a text file" in (
+        capsys.readouterr().out
+    )
+
+
+def test_a_gitignore_that_cannot_be_written_warns_instead_of_aborting_the_run(
+    tmp_path: Path, monkeypatch: MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    (tmp_path / ".gitignore").write_text("*.log\n", encoding="utf-8")
+    real_open = Path.open
+
+    def refuse_to_append(self: Path, mode: str = "r", *args: Any, **kwargs: Any) -> Any:
+        if self.name == ".gitignore" and "a" in mode:
+            raise PermissionError(13, "Permission denied")
+        return real_open(self, mode, *args, **kwargs)
+
+    monkeypatch.setattr(Path, "open", refuse_to_append)
+
+    report_dir = tooling.prepare_report_dir(tmp_path)
+
+    assert report_dir.is_dir()
+    assert "could not add .security_reports/ to .gitignore: Permission denied" in (
+        capsys.readouterr().out
+    )
 
 
 def test_prepare_report_dir_replaces_a_symlinked_report_dir_instead_of_following_it(
