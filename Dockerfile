@@ -10,7 +10,7 @@
 #     -v "$(pwd):/src" -v /var/run/docker.sock:/var/run/docker.sock \
 #     warden:local -u "http://host.docker.internal:3000"
 
-FROM python:3.11-slim-bookworm
+FROM python:3.11-slim-trixie
 
 # Optional build args for reproducible builds
 ARG TRIVY_VERSION=
@@ -22,17 +22,21 @@ ENV PYTHONUNBUFFERED=1 \
   UV_COMPILE_BYTECODE=1 \
   UV_PYTHON_DOWNLOADS=never
 
-# Base utilities and the Docker CLI for optional ZAP scans
+# Base utilities and the Docker CLI (client only) for optional ZAP scans
 RUN apt-get update \
  && apt-get install -y --no-install-recommends \
       bash \
       ca-certificates \
       curl \
+      docker-cli \
       git \
       gzip \
       tar \
-      docker.io \
  && rm -rf /var/lib/apt/lists/*
+
+# From here on a failure anywhere in a pipeline fails the step: without it a failed
+# `curl ... | sh` builds an image without the tool and every scan then warns and passes.
+SHELL ["/bin/bash", "-o", "pipefail", "-c"]
 
 # Trivy
 RUN curl -sfL https://raw.githubusercontent.com/aquasecurity/trivy/main/contrib/install.sh \
@@ -63,10 +67,8 @@ RUN set -eu; \
 WORKDIR /opt/warden
 COPY pyproject.toml uv.lock README.md LICENSE ./
 COPY src/ ./src/
-COPY bin/ ./bin/
 
 RUN uv sync --locked --no-dev \
- && chmod +x ./bin/warden ./bin/warden.sh \
  && ln -sf /opt/warden/.venv/bin/warden /usr/local/bin/warden
 
 ENV PATH="/opt/warden/.venv/bin:${PATH}"
@@ -90,6 +92,14 @@ ENV HOME=/var/tmp/warden \
 # refuse to operate on it under a different uid. Set system-wide rather than via
 # GIT_CONFIG_* env vars so it survives any HOME the caller supplies.
 RUN git config --system --add safe.directory '*'
+
+# The scanned tree is not trusted, and neither is a `.git/config` it carries: its
+# `core.fsmonitor` would run a command of the project's choosing whenever git looks at
+# the tree (Semgrep runs `git ls-files`). Config from the environment outranks every
+# config file, the repository's own included.
+ENV GIT_CONFIG_COUNT=1 \
+    GIT_CONFIG_KEY_0=core.fsmonitor \
+    GIT_CONFIG_VALUE_0=false
 
 USER warden
 

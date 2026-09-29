@@ -65,7 +65,9 @@ The flag is unnecessary there but harmless, so the commands above always use it.
 Because the container may run as any UID, the image keeps its scanner caches and
 settings under `/var/tmp/warden` rather than a fixed home directory, and sets
 `safe.directory` system-wide so Gitleaks can read a repository owned by a
-different user.
+different user. Because the scanned tree is not trusted, it also switches
+`core.fsmonitor` off through the environment, so a `.git/config` shipped inside the
+project cannot run a command when a scanner calls `git`.
 
 ## Add a DAST scan
 
