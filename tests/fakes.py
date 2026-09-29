@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import subprocess
 from dataclasses import dataclass, field
 from pathlib import Path
 
@@ -61,3 +62,13 @@ def symlink_or_skip(link: Path, target: Path) -> None:
         link.symlink_to(target)
     except (OSError, NotImplementedError):
         pytest.skip("this platform cannot create symlinks")
+
+
+def skip_unless_executable(script: Path) -> None:
+    """A temporary directory mounted noexec cannot run the stub scripts a test writes there."""
+    try:
+        runs = subprocess.run([str(script)], check=False, timeout=30).returncode == 0
+    except OSError:
+        runs = False
+    if not runs:
+        pytest.skip("this temporary directory cannot execute files")
