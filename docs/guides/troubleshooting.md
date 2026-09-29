@@ -116,8 +116,10 @@ it finds, but the reports still name every finding and where it is.
 
 ## Changes to `.warden.yaml` have no effect
 
-A config file that cannot be parsed is silently discarded and defaults are
-used. Warden prints no error. Check what it resolved:
+A config file that cannot be read is discarded and defaults are used, and Warden
+warns about what it did not understand in the file it did read (see
+[the format notes](../reference/configuration.md#the-config-file-format-is-a-yaml-subset)).
+Read the `Warning:` lines after `Target:`, then check what it resolved:
 
 ```bash
 warden-config .
@@ -134,7 +136,9 @@ causes:
   nesting are ignored. See
   [the format notes](../reference/configuration.md#the-config-file-format-is-a-yaml-subset).
 - Indentation is inconsistent. Any indentation marks a nested line, but it must
-  follow the `exclude_dirs:` or `tools:` key it belongs to.
+  follow the `exclude_dirs:` or `tools:` key it belongs to. A list written at the
+  *same* indent as `exclude_dirs:` (the default style of many YAML tools) is not
+  under it: indent the `- entry` lines.
 
 ## Findings from `node_modules`, `.venv`, or `vendor`
 

@@ -31,9 +31,17 @@ with `---` separators. Unrecognised top-level keys are parsed and then ignored.
 
 A file that cannot be read or parsed is treated as empty, and so is the
 project's own `.warden.yaml` when it is not a regular file (a named pipe, say).
-A path given with `--config` is read as given. Warden falls back to defaults rather than
-reporting an error. A malformed config therefore fails
-silently. Verify with `warden-config .` when in doubt.
+A path given with `--config` is read as given. Warden falls back to defaults rather
+than stopping, so a mistake never turns into an error, but it does turn into a
+**warning** for what it can see: a file that cannot be read or does not exist
+(`--config`), a line it does not understand (a list at the same indent as its key,
+`---`, an indented line under nothing), an unknown top-level key or tool name, a
+`tools:` value that is not true or false (`ture` counts as false, so the scanner is
+disabled), and a `target_url`, `exclude_dirs` or `tools` of the wrong shape. Every
+warning says the value is ignored or read as false; none changes what is resolved.
+`warden` prints them after the `Target:` line, `warden-config` prints them to
+stderr (its stdout stays JSON), and at most ten are shown. Verify with
+`warden-config .` when in doubt.
 
 ## Keys
 

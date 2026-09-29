@@ -10,6 +10,7 @@ from typing import cast
 
 from ._models import CliOptions, ResolvedConfig
 from ._scanners import SCANNERS
+from ._text import shown
 
 ScalarValue = str | int | bool
 RawConfigValue = ScalarValue | list[str] | dict[str, ScalarValue]
@@ -17,6 +18,9 @@ RawConfig = dict[str, RawConfigValue]
 
 
 CONFIG_FILENAME = ".warden.yaml"
+_KNOWN_KEYS = frozenset({"target_url", "url", "exclude_dirs", "tools"})
+_TOOL_WORDS = frozenset({"1", "true", "yes", "on", "0", "false", "no", "off"})
+_MAX_WARNINGS = 10
 
 
 def _closing_quote(line: str, start: int) -> int | None:
@@ -154,11 +158,13 @@ def _parse_nested_line(config: RawConfig, context: str | None, stripped: str) ->
         _assign_tool_override(config, stripped)
 
 
-def parse_minimal_yaml(text: str) -> RawConfig:
+def _parse_with_notes(text: str) -> tuple[RawConfig, list[str]]:
+    """The parsed file, and what in it Warden did not understand (which is then ignored)."""
     config: RawConfig = {}
+    notes: list[str] = []
     context: str | None = None
 
-    for raw_line in textwrap.dedent(text).splitlines():
+    for number, raw_line in enumerate(textwrap.dedent(text).splitlines(), start=1):
         line = _strip_comment(raw_line)
         if not line.strip():
             continue
@@ -168,11 +174,27 @@ def parse_minimal_yaml(text: str) -> RawConfig:
 
         if indent == 0:
             context = _parse_top_level_line(config, stripped)
+            if context is None and _split_key_value(stripped) is None:
+                notes.append(f"line {number} ({shown(stripped, 60)}) is not `key: value`: ignored")
             continue
 
+        if context not in {"exclude_dirs", "tools"}:
+            where = f"line {number} ({shown(stripped, 60)}) is indented"
+            notes.append(f"{where} but not under `exclude_dirs:` or `tools:`: ignored")
+        elif context == "exclude_dirs" and not stripped.startswith("-"):
+            notes.append(f"line {number} ({shown(stripped, 60)}) is not a `- entry`: ignored")
+        elif context == "tools" and _split_key_value(stripped) is None:
+            notes.append(f"line {number} ({shown(stripped, 60)}) is not `tool: value`: ignored")
         _parse_nested_line(config, context, stripped)
 
-    return config
+    notes.extend(
+        f"unknown key {shown(key, 60)} is ignored" for key in config if key not in _KNOWN_KEYS
+    )
+    return config, notes
+
+
+def parse_minimal_yaml(text: str) -> RawConfig:
+    return _parse_with_notes(text)[0]
 
 
 def _coerce_string(value: RawConfigValue | None) -> str:
@@ -203,11 +225,38 @@ def _extract_enabled_tools(value: RawConfigValue | None) -> frozenset[str]:
     )
 
 
+def _shape_notes(raw: RawConfig) -> list[str]:
+    """Values that parsed but that Warden then ignores or reads differently from what was meant."""
+    notes: list[str] = []
+    if "target_url" in raw and not isinstance(raw["target_url"], str):
+        notes.append("target_url is not a string: ignored")
+    if "exclude_dirs" in raw and not isinstance(raw["exclude_dirs"], list):
+        notes.append("exclude_dirs is not a list of `- entry` lines: ignored")
+    tools = raw.get("tools")
+    if "tools" in raw and not isinstance(tools, dict):
+        notes.append("tools is not a mapping of `scanner: true|false`: ignored")
+    elif isinstance(tools, dict):
+        known = {scanner.key for scanner in SCANNERS}
+        for name, value in tools.items():
+            if name not in known:
+                notes.append(f"unknown tool {shown(name, 60)} under tools is ignored")
+            elif isinstance(value, str) and value.strip().lower() not in _TOOL_WORDS:
+                notes.append(f"tools.{name} is {shown(value, 60)}, which counts as false: disabled")
+    return notes
+
+
 def _resolve_target_url(raw: RawConfig) -> str:
     """`target_url` wins whenever it is present, even when it is empty."""
     if "target_url" in raw:
         return _coerce_string(raw["target_url"])
     return _coerce_string(raw.get("url"))
+
+
+def _capped(warnings: list[str]) -> list[str]:
+    """A hostile file can be all mistakes; the first few say what is wrong."""
+    if len(warnings) <= _MAX_WARNINGS:
+        return warnings
+    return [*warnings[:_MAX_WARNINGS], f"... and {len(warnings) - _MAX_WARNINGS} more."]
 
 
 def resolve_config(
@@ -220,16 +269,24 @@ def resolve_config(
     path = Path(config_path).resolve() if config_path is not None else root / CONFIG_FILENAME
 
     raw: RawConfig = {}
+    warnings: list[str] = []
     try:
         # The project's own `.warden.yaml` is untrusted: a named pipe there blocks forever and
         # `/dev/zero` never ends, so only a regular file is read. A path passed with `--config` is
         # the user's own choice and is read as it always was, whatever kind of file it is.
         if path.exists() if config_path is not None else path.is_file():
-            raw = parse_minimal_yaml(path.read_text(encoding="utf-8-sig"))
-    except (OSError, UnicodeDecodeError, ValueError):
+            raw, notes = _parse_with_notes(path.read_text(encoding="utf-8-sig"))
+            warnings.extend(f"{path.name}: {note}" for note in notes)
+            warnings.extend(f"{path.name}: {note}" for note in _shape_notes(raw))
+        elif config_path is not None:
+            warnings.append(f"--config {shown(str(path))} does not exist: using the defaults.")
+        elif os.path.lexists(path):
+            warnings.append(f"{path.name} is not a regular file: using the defaults.")
+    except (OSError, UnicodeDecodeError, ValueError) as error:
         raw = {}
+        reason = error.strerror if isinstance(error, OSError) and error.strerror else error
+        warnings.append(f"{path.name} could not be read ({reason}): using the defaults.")
 
-    warnings: list[str] = []
     resolved_url = cli_url.strip()
     if not resolved_url:
         resolved_url = _resolve_target_url(raw).strip()
@@ -252,7 +309,7 @@ def resolve_config(
         url=resolved_url,
         exclude_dirs=exclude_dirs,
         enabled_tools=enabled_tools,
-        warnings=tuple(warnings),
+        warnings=tuple(_capped(warnings)),
     )
 
 

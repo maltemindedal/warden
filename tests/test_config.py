@@ -445,3 +445,119 @@ def test_warden_config_prints_its_warnings_to_stderr_and_keeps_stdout_json(
     captured = capsys.readouterr()
     assert json.loads(captured.out)["url"] == ""
     assert "Warning: target_url" in captured.err
+
+
+def _warnings_for(tmp_path: Path, text: str) -> tuple[str, ...]:
+    (tmp_path / ".warden.yaml").write_text(text, encoding="utf-8")
+    return resolve_config(project_root=tmp_path, cli_url="").warnings
+
+
+def test_a_correct_config_produces_no_warnings(tmp_path: Path) -> None:
+    text = (
+        "# scan settings\n"
+        'target_url: "http://localhost:3000"  # the app\n'
+        "exclude_dirs:\n  - tests/\n  - 'legacy/'\n"
+        "tools:\n  zap: true\n  gitleaks: false\n  semgrep: 0\n  trivy: yes\n"
+    )
+
+    assert _warnings_for(tmp_path, text) == ()
+
+
+@pytest.mark.parametrize(
+    ("text", "expected"),
+    [
+        # PyYAML's default list style: same indent as its key, so it is not under `exclude_dirs`.
+        ("exclude_dirs:\n- vendor/\n", "line 2 ('- vendor/') is not `key: value`"),
+        ("exclude_dir:\n  - vendor/\n", "unknown key 'exclude_dir' is ignored"),
+        ("target_url: 3000\n", "target_url is not a string"),
+        ("exclude_dirs: vendor/\n", "exclude_dirs is not a list"),
+        ("tools: false\n", "tools is not a mapping"),
+        ("tools: {zap: false}\n", "tools is not a mapping"),
+        ("tools:\n  gitleaks2: false\n", "unknown tool 'gitleaks2' under tools is ignored"),
+        ("tools:\n  trivy: ture\n", "tools.trivy is 'ture', which counts as false"),
+        ("tools:\n  zap:\n", "tools.zap is '', which counts as false"),
+        ("tools:\n  zap\n", "line 2 ('zap') is not `tool: value`"),
+        ("exclude_dirs:\n  vendor/\n", "line 2 ('vendor/') is not a `- entry`"),
+        ("target_url: x\n  stray: y\n", "line 2 ('stray: y') is indented but not under"),
+        ("---\ntarget_url: x\n", "line 1 ('---') is not `key: value`"),
+    ],
+)
+def test_a_config_mistake_warden_can_see_is_warned_about(
+    tmp_path: Path, text: str, expected: str
+) -> None:
+    warnings = _warnings_for(tmp_path, text)
+
+    assert any(f".warden.yaml: {expected}" in warning for warning in warnings), warnings
+
+
+def test_a_warned_about_config_resolves_exactly_as_it_did_without_the_warning(
+    tmp_path: Path,
+) -> None:
+    (tmp_path / ".warden.yaml").write_text(
+        "exclude_dirs:\n- vendor/\ntools:\n  trivy: ture\n  zap: false\n", encoding="utf-8"
+    )
+
+    resolved = resolve_config(project_root=tmp_path, cli_url="")
+
+    assert resolved.exclude_dirs == []
+    assert resolved.enabled_tools == frozenset({"semgrep", "gitleaks"})
+    assert resolved.warnings
+
+
+def test_an_explicit_config_that_does_not_exist_is_warned_about(tmp_path: Path) -> None:
+    resolved = resolve_config(project_root=tmp_path, cli_url="", config_path=tmp_path / "nope.yaml")
+
+    assert len(resolved.warnings) == 1
+    assert "--config" in resolved.warnings[0]
+    assert "does not exist" in resolved.warnings[0]
+
+
+def test_a_config_that_cannot_be_read_is_warned_about(tmp_path: Path) -> None:
+    (tmp_path / ".warden.yaml").write_bytes(b"\xff\xfet\x00a\x00")
+
+    warnings = resolve_config(project_root=tmp_path, cli_url="").warnings
+
+    assert len(warnings) == 1
+    assert warnings[0].startswith(".warden.yaml could not be read (")
+    assert warnings[0].endswith("): using the defaults.")
+
+
+def test_an_absent_project_config_is_not_worth_a_warning(tmp_path: Path) -> None:
+    assert resolve_config(project_root=tmp_path, cli_url="").warnings == ()
+
+
+@pytest.mark.skipif(not hasattr(os, "mkfifo"), reason="needs named pipes")
+def test_a_project_config_that_is_not_a_regular_file_is_warned_about(tmp_path: Path) -> None:
+    os.mkfifo(tmp_path / ".warden.yaml")
+
+    warnings = resolve_config(project_root=tmp_path, cli_url="").warnings
+
+    assert warnings == (".warden.yaml is not a regular file: using the defaults.",)
+
+
+def test_a_hostile_config_produces_a_capped_number_of_warnings(tmp_path: Path) -> None:
+    warnings = _warnings_for(tmp_path, "x\n" * 500)
+
+    assert len(warnings) == 11
+    assert warnings[-1] == "... and 490 more."
+
+
+def test_a_warning_shows_project_text_escaped_and_cut(tmp_path: Path) -> None:
+    warnings = _warnings_for(tmp_path, 'tools:\n  trivy: "\x1b[2J' + "x" * 200 + '"\n')
+
+    assert len(warnings) == 1
+    assert "\x1b" not in warnings[0]
+    assert "\\x1b[2J" in warnings[0]
+    assert len(warnings[0]) < 200
+
+
+def test_warden_config_prints_config_warnings_to_stderr(
+    tmp_path: Path, capsys: CaptureFixture[str]
+) -> None:
+    (tmp_path / ".warden.yaml").write_text("exclude_dir:\n", encoding="utf-8")
+
+    assert main([str(tmp_path)]) == 0
+
+    captured = capsys.readouterr()
+    assert json.loads(captured.out)["exclude_dirs"] == []
+    assert "Warning: .warden.yaml: unknown key 'exclude_dir' is ignored" in captured.err
