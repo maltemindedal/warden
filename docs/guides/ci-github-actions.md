@@ -70,8 +70,9 @@ To enable DAST, add a `url`:
 
 Start the target application in an earlier step; the action does not start it
 for you. A `target_url` in the repository's own `.warden.yaml` is **not** used on a
-runner (it could come from a pull request, and it starts an active scan): the
-`url` input is the only way to turn DAST on.
+runner (it could come from a pull request, and it starts an active scan): DAST is
+turned on by the `url` input, or by a `target_url` in a file given through the
+[`config` input](#gating-pull-requests), which the workflow's author chooses.
 
 ### Action inputs
 
@@ -79,7 +80,7 @@ runner (it could come from a pull request, and it starts an active scan): the
 | --- | --- | --- |
 | `url` | none | DAST target. Omit to skip ZAP. |
 | `config` | none | Path to a `.warden.yaml` **outside the checkout**, used instead of the repository's own. See [Gating pull requests](#gating-pull-requests). |
-| `strict` | `"false"` | Pass `--strict`: exit `3` when a scanner that ran left no usable report. |
+| `strict` | `"false"` | Pass `--strict`: exit `3` when a scanner that ran left no usable report. Must be `true` or `false` (any case); anything else fails the step, so a misspelling cannot switch the check off. |
 | `upload-artifact` | `"true"` | Whether to upload the reports as a build artifact. |
 | `artifact-name` | `"warden-report"` | Name of the uploaded artifact. |
 
@@ -115,6 +116,13 @@ path inside the checkout, symlinks resolved, and one that is not a file):
     config: ${{ runner.temp }}/warden.yaml
     strict: true
 ```
+
+It only helps if the workflow that names it is not itself taken from the change: a
+pull request can edit a `pull_request` workflow, including the step that writes the
+trusted file or the `config:` line that uses it, so run the gate from a workflow the
+change cannot alter (a `pull_request_target` or base-branch workflow, a required
+workflow or ruleset) or require review of changes under `.github/`. A `target_url` in a
+trusted file is honored, so it can also start a DAST scan.
 
 It does not cover the scanners' own files or inline suppressions: Warden runs Trivy,
 Semgrep and Gitleaks over the checkout as they find it, so a reviewer of a pull request

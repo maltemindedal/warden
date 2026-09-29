@@ -30,6 +30,7 @@ class Step:
     def __init__(self, tmp_path: Path) -> None:
         self.workspace = tmp_path / "workspace"
         self.workspace.mkdir()
+        self.github_workspace = self.workspace  # what the runner calls the workspace
         self.outside = tmp_path / "runner-temp"
         self.outside.mkdir()
         self._stubs = tmp_path / "stubs"
@@ -54,7 +55,7 @@ class Step:
             check=False,
             env={
                 "PATH": f"{self._stubs}:/usr/bin:/bin",
-                "GITHUB_WORKSPACE": str(self.workspace),
+                "GITHUB_WORKSPACE": str(self.github_workspace),
                 "INPUT_URL": url,
                 "INPUT_STRICT": strict,
                 "INPUT_CONFIG": config,
@@ -91,10 +92,30 @@ def test_the_url_and_strict_inputs_become_flags(step: Step) -> None:
     assert step.warden_args() == ["--url", "https://example.com", "--strict"]
 
 
-def test_strict_is_only_on_when_it_is_exactly_true(step: Step) -> None:
-    step.run(strict="false")
+@pytest.mark.parametrize("value", ["true", "True", "TRUE"])
+def test_strict_is_on_for_the_spellings_of_true(step: Step, value: str) -> None:
+    step.run(strict=value)
+
+    assert step.warden_args() == ["--strict"]
+
+
+@pytest.mark.parametrize("value", ["false", "False", "FALSE", ""])
+def test_strict_is_off_for_the_spellings_of_false(step: Step, value: str) -> None:
+    step.run(strict=value)
 
     assert step.warden_args() == []
+
+
+@pytest.mark.parametrize("value", ["yes", "1", "on", " true", "truee"])
+def test_a_strict_value_that_is_neither_true_nor_false_is_an_error_not_a_silent_off(
+    step: Step, value: str
+) -> None:
+    """A gate that quietly runs without `--strict` because of a spelling would fail open."""
+    completed = step.run(strict=value)
+
+    assert completed.returncode == 1
+    assert "The strict input must be true or false" in completed.stdout
+    assert not step.docker_log.exists()
 
 
 def test_a_config_from_outside_the_checkout_is_mounted_read_only_and_used(step: Step) -> None:
@@ -137,3 +158,43 @@ def test_a_config_that_is_not_a_file_is_refused(step: Step) -> None:
     assert completed.returncode == 1
     assert "does not name a file" in completed.stdout
     assert not step.docker_log.exists()
+
+
+def test_a_config_in_a_directory_that_does_not_exist_gets_the_annotation_too(step: Step) -> None:
+    completed = step.run(config=str(step.outside / "no" / "such" / "warden.yaml"))
+
+    assert completed.returncode == 1
+    assert "does not name a file" in completed.stdout
+    assert not step.docker_log.exists()
+
+
+def test_a_workspace_that_is_itself_a_symlink_does_not_hide_a_config_inside_it(
+    step: Step, tmp_path: Path
+) -> None:
+    config = step.workspace / "policy.yaml"
+    config.write_text("tools:\n  trivy: false\n", encoding="utf-8")
+    link = tmp_path / "workspace-link"
+    symlink_or_skip(link, step.workspace)
+    step.github_workspace = link
+
+    completed = step.run(config=str(config))
+
+    assert completed.returncode == 1
+    assert "must point outside the checked-out workspace" in completed.stdout
+    assert not step.docker_log.exists()
+
+
+def test_a_directory_whose_name_only_starts_like_the_workspace_is_outside_it(
+    step: Step, tmp_path: Path
+) -> None:
+    """`/work` is not `/workspace`: the prefix test must stop at a path separator."""
+    short = tmp_path / "work"
+    short.mkdir()
+    step.github_workspace = short  # `workspace` (the fixture's directory) starts with `work`
+    config = step.workspace / "warden.yaml"
+    config.write_text("tools:\n  zap: false\n", encoding="utf-8")
+
+    completed = step.run(config=str(config))
+
+    assert completed.returncode == 0, completed.stdout
+    assert step.warden_args() == ["--config", "/warden-config.yaml"]

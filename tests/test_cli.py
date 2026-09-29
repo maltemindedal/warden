@@ -420,15 +420,23 @@ def test_strict_holds_an_unusable_dast_url_against_the_run(
     assert "STRICT: ZAP did not produce a usable report" in capsys.readouterr().out
 
 
-def test_strict_holds_a_scanner_that_timed_out_against_the_run(tmp_path: Path) -> None:
+def test_strict_holds_a_scanner_that_timed_out_against_the_run_whatever_it_left_behind(
+    tmp_path: Path, capsys: CaptureFixture[str]
+) -> None:
+    """Every scanner leaves a well-formed report, so only the timeout can make them unusable."""
     runner = RecordingRunner(
         returncode=None,
         timed_out=True,
         warning="trivy timed out after 5 seconds and was stopped.",
-        report_text="{}",
+        report_texts=USABLE_REPORTS,
     )
 
-    assert _strict(tmp_path, runner, "--timeout", "5") == cli.EXIT_INCOMPLETE
+    exit_code = _strict(tmp_path, runner, "--timeout", "5")
+
+    assert exit_code == cli.EXIT_INCOMPLETE
+    assert "STRICT: Trivy, Semgrep, Gitleaks did not produce a usable report" in (
+        capsys.readouterr().out
+    )
 
 
 @pytest.mark.parametrize("encoding", ["cp1252", "ascii"])

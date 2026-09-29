@@ -35,15 +35,22 @@ runs:
         URL="$INPUT_URL"
         ARGS=()
         if [ -n "$URL" ]; then ARGS+=(--url "$URL"); fi
-        if [ "$INPUT_STRICT" = "true" ]; then ARGS+=(--strict); fi
+        case "$INPUT_STRICT" in
+          true | True | TRUE) ARGS+=(--strict) ;;
+          false | False | FALSE | "") ;;
+          *)
+            echo "::error::The strict input must be true or false, not: $INPUT_STRICT"
+            exit 1
+            ;;
+        esac
 
         # A .warden.yaml inside the checkout is part of the change under review, so it cannot
         # be trusted to say what to scan. A config from outside it is mounted read-only and
         # used instead: the workspace's own file is not read at all.
         CONFIG_MOUNT=()
         if [ -n "$INPUT_CONFIG" ]; then
-          CONFIG_FILE="$(readlink -f -- "$INPUT_CONFIG")"
-          WORKSPACE_DIR="$(readlink -f -- "$GITHUB_WORKSPACE")"
+          CONFIG_FILE="$(readlink -f -- "$INPUT_CONFIG" || true)"
+          WORKSPACE_DIR="$(readlink -f -- "$GITHUB_WORKSPACE" || true)"
           if [ ! -f "$CONFIG_FILE" ]; then
             echo "::error::The config input does not name a file: $INPUT_CONFIG"
             exit 1

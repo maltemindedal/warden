@@ -44,7 +44,8 @@ PowerShell habits and POSIX shells. All four spellings set the same value.
   only printable characters** (ZAP tests the prefix literally). Anything else
   (`localhost:3000` without a scheme, `HTTP://...`, `ftp://...`, an escape sequence in
   the value) prints `Warning: the DAST URL ... is not usable` and skips
-  ZAP; the other scanners still run and the exit code is unaffected. ZAP itself
+  ZAP; the other scanners still run and the exit code is unaffected, unless you pass
+  `--strict`, which counts a refused URL as ZAP failing to run (exit `3`). ZAP itself
   rejects such a target, so nothing that worked is lost.
 - A URL host of `localhost` or `127.0.0.1` is rewritten to
   `host.docker.internal` before ZAP runs, so the ZAP container can reach an app
