@@ -123,9 +123,11 @@ a build. Semgrep's `ERROR` maps to `HIGH`, so those findings also fail a build. 
 
 About 110 lines of code parse `.warden.yaml` without a YAML library. This keeps
 the runtime dependency list to `rich` and `semgrep`, but supports only the
-documented shapes. The parser ignores unsupported syntax, so a malformed config
-can silently produce the defaults. Use `warden-config` to inspect the resolved
-configuration.
+documented shapes. The parser ignores unsupported syntax and falls back to the
+defaults, and `resolve_config` collects a bounded list of warnings about what it
+ignored (they never change a resolved value; the CLI prints them, `warden-config`
+sends them to stderr). Some malformed input still produces no warning, so use
+`warden-config` to inspect the resolved configuration.
 
 ### One record per scanner
 

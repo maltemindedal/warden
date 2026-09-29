@@ -12,6 +12,7 @@ import pytest
 from pytest import CaptureFixture
 
 from fakes import symlink_or_skip
+from warden import config as config_module
 from warden._scanners import SCANNERS, ZAP
 from warden.config import main, parse_minimal_yaml, resolve_config
 
@@ -570,3 +571,108 @@ def test_warden_config_prints_config_warnings_to_stderr(
     captured = capsys.readouterr()
     assert json.loads(captured.out)["exclude_dirs"] == []
     assert "Warning: .warden.yaml: unknown key 'exclude_dir' is ignored" in captured.err
+
+
+def test_the_ignored_target_url_notice_is_not_lost_behind_a_full_list_of_config_notes(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """The notice is what tells the user how to scan; the cap is for the file's own mistakes."""
+    monkeypatch.setenv("GITHUB_WORKSPACE", str(tmp_path))
+    (tmp_path / ".warden.yaml").write_text(
+        "".join(f"junk{index}\n" for index in range(12))
+        + 'target_url: "http://internal.example"\n',
+        encoding="utf-8",
+    )
+
+    warnings = resolve_config(project_root=tmp_path, cli_url="").warnings
+
+    assert len(warnings) == 12
+    assert warnings[10] == "... and 2 more."
+    assert warnings[11].startswith("target_url in .warden.yaml is ignored")
+
+
+def test_no_target_url_notice_when_zap_is_disabled_because_no_scan_could_follow_it(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setenv("GITHUB_WORKSPACE", str(tmp_path))
+    (tmp_path / ".warden.yaml").write_text(
+        'target_url: "http://app.example"\ntools:\n  zap: false\n', encoding="utf-8"
+    )
+
+    resolved = resolve_config(project_root=tmp_path, cli_url="")
+
+    assert resolved.warnings == ()
+    assert resolved.url == ""
+
+
+def test_an_exclude_dirs_entry_with_a_nul_byte_is_dropped_with_a_warning(tmp_path: Path) -> None:
+    """A NUL cannot be in a command line; dropping the entry keeps every scanner running."""
+    (tmp_path / ".warden.yaml").write_text(
+        'exclude_dirs:\n  - "a\x00b"\n  - vendor/\n', encoding="utf-8"
+    )
+
+    resolved = resolve_config(project_root=tmp_path, cli_url="")
+
+    assert resolved.exclude_dirs == ["vendor/"]
+    assert resolved.warnings == (
+        ".warden.yaml: exclude_dirs entry 'a\\x00b' holds a NUL byte: ignored",
+    )
+    assert all(scanner.key in resolved.enabled_tools for scanner in SCANNERS)
+
+
+def test_notes_past_the_cap_are_counted_but_never_built(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A file of a million mistakes must not cost a million note strings."""
+    calls: list[str] = []
+
+    def counting_shown(text: str, limit: int = 120) -> str:
+        calls.append(text)
+        return repr(text[:limit])
+
+    monkeypatch.setattr(config_module, "shown", counting_shown)
+
+    warnings = _warnings_for(tmp_path, "x\n" * 5_000)
+
+    assert len(warnings) == 11
+    assert len(calls) == 10
+
+
+@pytest.mark.parametrize(
+    ("text", "exclude_dirs", "enabled"),
+    [
+        ("exclude_dirs:\n- vendor/\n", [], {"trivy", "semgrep", "gitleaks", "zap"}),
+        ("tools:\n  trivy: ture\n", [], {"semgrep", "gitleaks", "zap"}),
+        ("tools:\n  zap:\n", [], {"trivy", "semgrep", "gitleaks"}),
+        ("exclude_dir:\n  - vendor/\n", [], {"trivy", "semgrep", "gitleaks", "zap"}),
+        ("tools:\n  gitleaks2: false\n", [], {"trivy", "semgrep", "gitleaks", "zap"}),
+        ("tools: {zap: false}\n", [], {"trivy", "semgrep", "gitleaks", "zap"}),
+        ("exclude_dirs: vendor/\n", [], {"trivy", "semgrep", "gitleaks", "zap"}),
+    ],
+)
+def test_each_warned_about_example_resolves_as_it_did_before_the_warning(
+    tmp_path: Path, text: str, exclude_dirs: list[str], enabled: set[str]
+) -> None:
+    (tmp_path / ".warden.yaml").write_text(text, encoding="utf-8")
+
+    resolved = resolve_config(project_root=tmp_path, cli_url="")
+
+    assert resolved.warnings
+    assert resolved.exclude_dirs == exclude_dirs
+    assert resolved.enabled_tools == frozenset(enabled)
+
+
+@pytest.mark.parametrize(
+    "text",
+    [
+        "tools:\n  zap: \"true\"\n  trivy: 'false'\n",
+        'target_url: "http://app/#/login"  # the app\n',
+        "exclude_dirs:\n  - 'it''s/'\n  - \"vendor#1/\"  # third party\n",
+        "target_url: http://app.example  # unquoted, with a comment\n",
+        "tools:\n  # nothing is switched off\n",
+    ],
+)
+def test_every_quoting_form_the_parser_supports_produces_no_warning(
+    tmp_path: Path, text: str
+) -> None:
+    assert _warnings_for(tmp_path, text) == ()

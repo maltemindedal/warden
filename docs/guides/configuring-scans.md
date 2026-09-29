@@ -16,8 +16,10 @@ warden-config .
 {"url": "", "exclude_dirs": [], "tools": {"trivy": true, "semgrep": true, "gitleaks": true, "zap": true}}
 ```
 
-This is worth doing because a config file that fails to parse is silently
-ignored rather than reported as an error.
+This is worth doing because Warden falls back to the defaults for what it cannot
+read, and warns about most of what it does not understand (see
+[the config format](../reference/configuration.md#the-config-file-format-is-a-yaml-subset)),
+so the resolved output is the ground truth.
 
 ## Exclude directories from scanning
 

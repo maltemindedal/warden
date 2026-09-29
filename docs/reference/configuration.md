@@ -45,7 +45,11 @@ than stopping, so a mistake never turns into an error, but it does turn into a
 disabled), and a `target_url`, `exclude_dirs` or `tools` of the wrong shape. Every
 warning says the value is ignored or read as false; none changes what is resolved.
 `warden` prints them after the `Target:` line, `warden-config` prints them to
-stderr (its stdout stays JSON), and at most ten are shown. Verify with
+stderr (its stdout stays JSON), and at most ten are shown, followed by a count of
+the rest. The one notice that is never cut is the one about an ignored `target_url`
+(below), and it is not shown when `tools.zap` is `false`, since no scan could follow.
+An `exclude_dirs` entry that holds a NUL byte, which no command line can carry, is
+dropped with a warning; the other entries and every scanner are unaffected. Verify with
 `warden-config .` when in doubt.
 
 ## Keys

@@ -162,10 +162,33 @@ def _parse_nested_line(config: RawConfig, context: str | None, stripped: str) ->
         _assign_tool_override(config, stripped)
 
 
-def _parse_with_notes(text: str) -> tuple[RawConfig, list[str]]:
-    """The parsed file, and what in it Warden did not understand (which is then ignored)."""
+class _Notes:
+    """What Warden did not understand in a config file: the first notes, and a count of the rest.
+
+    A hostile file can be all mistakes, so once enough notes are kept the others are only
+    counted: the text of a note past the limit is never built, let alone kept. Text taken from
+    the file goes in as an argument, and is escaped and cut only for a note that is kept.
+    """
+
+    def __init__(self, prefix: str = "") -> None:
+        self._prefix = prefix
+        self._kept: list[str] = []
+        self._omitted = 0
+
+    def add(self, message: str, *file_text: str) -> None:
+        """Note `message`, whose `%s` places are filled with `file_text`, shown safely."""
+        if len(self._kept) < _MAX_WARNINGS:
+            self._kept.append(self._prefix + message % tuple(shown(text, 60) for text in file_text))
+        else:
+            self._omitted += 1
+
+    def lines(self) -> list[str]:
+        return [*self._kept, f"... and {self._omitted} more."] if self._omitted else self._kept
+
+
+def _parse_with_notes(text: str, notes: _Notes) -> RawConfig:
+    """The parsed file; whatever in it Warden did not understand is ignored, and noted."""
     config: RawConfig = {}
-    notes: list[str] = []
     context: str | None = None
 
     for number, raw_line in enumerate(textwrap.dedent(text).splitlines(), start=1):
@@ -179,26 +202,26 @@ def _parse_with_notes(text: str) -> tuple[RawConfig, list[str]]:
         if indent == 0:
             context = _parse_top_level_line(config, stripped)
             if context is None and _split_key_value(stripped) is None:
-                notes.append(f"line {number} ({shown(stripped, 60)}) is not `key: value`: ignored")
+                notes.add(f"line {number} (%s) is not `key: value`: ignored", stripped)
             continue
 
         if context not in {"exclude_dirs", "tools"}:
-            where = f"line {number} ({shown(stripped, 60)}) is indented"
-            notes.append(f"{where} but not under `exclude_dirs:` or `tools:`: ignored")
+            where = f"line {number} (%s) is indented but not under"
+            notes.add(f"{where} `exclude_dirs:` or `tools:`: ignored", stripped)
         elif context == "exclude_dirs" and not stripped.startswith("-"):
-            notes.append(f"line {number} ({shown(stripped, 60)}) is not a `- entry`: ignored")
+            notes.add(f"line {number} (%s) is not a `- entry`: ignored", stripped)
         elif context == "tools" and _split_key_value(stripped) is None:
-            notes.append(f"line {number} ({shown(stripped, 60)}) is not `tool: value`: ignored")
+            notes.add(f"line {number} (%s) is not `tool: value`: ignored", stripped)
         _parse_nested_line(config, context, stripped)
 
-    notes.extend(
-        f"unknown key {shown(key, 60)} is ignored" for key in config if key not in _KNOWN_KEYS
-    )
-    return config, notes
+    for key in config:
+        if key not in _KNOWN_KEYS:
+            notes.add("unknown key %s is ignored", key)
+    return config
 
 
 def parse_minimal_yaml(text: str) -> RawConfig:
-    return _parse_with_notes(text)[0]
+    return _parse_with_notes(text, _Notes())
 
 
 def _coerce_string(value: RawConfigValue | None) -> str:
@@ -229,24 +252,33 @@ def _extract_enabled_tools(value: RawConfigValue | None) -> frozenset[str]:
     )
 
 
-def _shape_notes(raw: RawConfig) -> list[str]:
+def _note_shapes(raw: RawConfig, notes: _Notes) -> None:
     """Values that parsed but that Warden then ignores or reads differently from what was meant."""
-    notes: list[str] = []
     if "target_url" in raw and not isinstance(raw["target_url"], str):
-        notes.append("target_url is not a string: ignored")
+        notes.add("target_url is not a string: ignored")
     if "exclude_dirs" in raw and not isinstance(raw["exclude_dirs"], list):
-        notes.append("exclude_dirs is not a list of `- entry` lines: ignored")
+        notes.add("exclude_dirs is not a list of `- entry` lines: ignored")
     tools = raw.get("tools")
     if "tools" in raw and not isinstance(tools, dict):
-        notes.append("tools is not a mapping of `scanner: true|false`: ignored")
+        notes.add("tools is not a mapping of `scanner: true|false`: ignored")
     elif isinstance(tools, dict):
         known = {scanner.key for scanner in SCANNERS}
         for name, value in tools.items():
             if name not in known:
-                notes.append(f"unknown tool {shown(name, 60)} under tools is ignored")
+                notes.add("unknown tool %s under tools is ignored", name)
             elif isinstance(value, str) and value.strip().lower() not in _TOOL_WORDS:
-                notes.append(f"tools.{name} is {shown(value, 60)}, which counts as false: disabled")
-    return notes
+                notes.add(f"tools.{name} is %s, which counts as false: disabled", value)
+
+
+def _without_nul(entries: list[str], notes: _Notes) -> list[str]:
+    """A NUL byte cannot be part of a command line, so an entry that holds one is dropped."""
+    kept: list[str] = []
+    for entry in entries:
+        if "\x00" in entry:
+            notes.add("exclude_dirs entry %s holds a NUL byte: ignored", entry)
+        else:
+            kept.append(entry)
+    return kept
 
 
 def _resolve_target_url(raw: RawConfig) -> str:
@@ -254,13 +286,6 @@ def _resolve_target_url(raw: RawConfig) -> str:
     if "target_url" in raw:
         return _coerce_string(raw["target_url"])
     return _coerce_string(raw.get("url"))
-
-
-def _capped(warnings: list[str]) -> list[str]:
-    """A hostile file can be all mistakes; the first few say what is wrong."""
-    if len(warnings) <= _MAX_WARNINGS:
-        return warnings
-    return [*warnings[:_MAX_WARNINGS], f"... and {len(warnings) - _MAX_WARNINGS} more."]
 
 
 def resolve_config(
@@ -273,15 +298,15 @@ def resolve_config(
     path = Path(config_path).resolve() if config_path is not None else root / CONFIG_FILENAME
 
     raw: RawConfig = {}
+    notes = _Notes(prefix=f"{path.name}: ")
     warnings: list[str] = []
     try:
         # The project's own `.warden.yaml` is untrusted: a named pipe there blocks forever and
         # `/dev/zero` never ends, so only a regular file is read. A path passed with `--config` is
         # the user's own choice and is read as it always was, whatever kind of file it is.
         if path.exists() if config_path is not None else path.is_file():
-            raw, notes = _parse_with_notes(path.read_text(encoding="utf-8-sig"))
-            warnings.extend(f"{path.name}: {note}" for note in notes)
-            warnings.extend(f"{path.name}: {note}" for note in _shape_notes(raw))
+            raw = _parse_with_notes(path.read_text(encoding="utf-8-sig"), notes)
+            _note_shapes(raw, notes)
         elif config_path is not None:
             warnings.append(f"--config {shown(str(path))} does not exist: using the defaults.")
         elif os.path.lexists(path):
@@ -291,29 +316,37 @@ def resolve_config(
         reason = error.strerror if isinstance(error, OSError) and error.strerror else error
         warnings.append(f"{path.name} could not be read ({reason}): using the defaults.")
 
+    exclude_dirs = _without_nul(_extract_exclude_dirs(raw.get("exclude_dirs")), notes)
+    enabled_tools = _extract_enabled_tools(raw.get("tools"))
+    # A URL is only meaningful while some scanner that targets one is still enabled.
+    scans_url = any(scanner.requires_url and scanner.key in enabled_tools for scanner in SCANNERS)
+    # What the notes cover is capped; the notice below is not, and comes after them.
+    warnings.extend(notes.lines())
+
     resolved_url = cli_url.strip()
     if not resolved_url:
         resolved_url = _resolve_target_url(raw).strip()
         # On a CI runner the project's own `.warden.yaml` can be changed by whoever opens a pull
         # request, and `target_url` starts an active scan against whatever it names.
-        if resolved_url and config_path is None and os.environ.get("GITHUB_WORKSPACE"):
+        if (
+            resolved_url
+            and scans_url
+            and config_path is None
+            and os.environ.get("GITHUB_WORKSPACE")
+        ):
             warnings.append(
                 f"target_url in {CONFIG_FILENAME} is ignored because GITHUB_WORKSPACE is set "
                 "(the file can come from a pull request): pass --url to scan it."
             )
             resolved_url = ""
-    exclude_dirs = _extract_exclude_dirs(raw.get("exclude_dirs"))
-    enabled_tools = _extract_enabled_tools(raw.get("tools"))
-
-    # A URL is only meaningful while some scanner that targets one is still enabled.
-    if not any(scanner.requires_url and scanner.key in enabled_tools for scanner in SCANNERS):
+    if not scans_url:
         resolved_url = ""
 
     return ResolvedConfig(
         url=resolved_url,
         exclude_dirs=exclude_dirs,
         enabled_tools=enabled_tools,
-        warnings=tuple(_capped(warnings)),
+        warnings=tuple(warnings),
     )
 
 
