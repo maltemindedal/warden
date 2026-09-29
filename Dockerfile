@@ -11,7 +11,7 @@
 #     warden:local -u "http://host.docker.internal:3000"
 
 # uv, pinned by version and digest and copied in as a binary: nothing is piped into a shell.
-FROM ghcr.io/astral-sh/uv:0.12.18@sha256:3adc3706091ce7c2fe595e669628caedd6d951551b92b258b7e7dbe06d9440bc AS uv
+FROM ghcr.io/astral-sh/uv:0.12.20@sha256:100047e74f30778ab704942321a09750d6158739573ff58bf3924085cc6cd2d8 AS uv
 
 FROM python:3.11-slim-trixie
 
