@@ -279,7 +279,7 @@ def test_the_timeout_reaches_every_scanner_and_defaults_to_none(tmp_path: Path) 
     assert [command.timeout for command in unlimited.commands] == [None] * len(SCANNERS)
 
 
-@pytest.mark.parametrize("value", ["0", "-5", "nan", "soon"])
+@pytest.mark.parametrize("value", ["0", "-5", "nan", "soon", "inf", "-inf", "1e999", "4294968"])
 def test_a_timeout_that_is_not_a_positive_number_is_a_usage_error(
     tmp_path: Path, capsys: CaptureFixture[str], value: str
 ) -> None:

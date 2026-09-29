@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 import os
+import signal
 import stat
 import subprocess
 from collections.abc import Sequence
@@ -109,15 +110,41 @@ def clear_output_file(path: Path) -> None:
 
 
 _STOP_GRACE_SECONDS = 10
+_OWN_SESSION = os.name == "posix"
+"""A scanner is started as the leader of its own process group, so that the workers it starts
+(Semgrep runs a separate `semgrep-core`) can be signalled with it. Windows has no such group here,
+and only the scanner process itself is stopped there."""
+
+
+def _signal_group(process: subprocess.Popen[bytes], sig: signal.Signals) -> None:
+    try:
+        os.killpg(process.pid, sig)
+    except (ProcessLookupError, PermissionError):
+        pass  # nothing of it is left to signal
+
+
+def _kill(process: subprocess.Popen[bytes]) -> None:
+    """Kill the scanner and whatever it started, without waiting for either."""
+    if _OWN_SESSION:
+        _signal_group(process, signal.SIGKILL)
+    process.kill()
 
 
 def _stop(process: subprocess.Popen[bytes]) -> None:
-    """Ask it to stop, so `docker run` can pass the signal on to its container, then insist."""
-    process.terminate()
+    """Ask the scanner and its workers to stop, give them a moment, then kill what is left.
+
+    However this is left, including by an interrupt while waiting, nothing is left running.
+    """
     try:
+        if _OWN_SESSION:
+            _signal_group(process, signal.SIGTERM)
+        else:
+            process.terminate()
         process.wait(timeout=_STOP_GRACE_SECONDS)
     except subprocess.TimeoutExpired:
-        process.kill()
+        pass
+    finally:
+        _kill(process)
         process.wait()
 
 
@@ -140,6 +167,7 @@ def run_subprocess(
             cwd=str(cwd),
             env=environment,
             stderr=subprocess.DEVNULL if stderr_to_devnull else None,
+            start_new_session=_OWN_SESSION,
         ) as process:
             try:
                 returncode = process.wait(timeout=timeout)
@@ -151,7 +179,7 @@ def run_subprocess(
                     timed_out=True,
                 )
             except BaseException:
-                process.kill()
+                _kill(process)
                 raise
     except FileNotFoundError:
         return CommandResult(returncode=None, warning=f"{args[0]} was not found on PATH.")
@@ -259,6 +287,9 @@ def run_scanner(
     if result.timed_out:
         # Whatever a stopped scanner left behind is not a finished report.
         request.report_path.unlink(missing_ok=True)
+        if command.on_timeout is not None:
+            # Best effort: the container may be gone already, and only the attempt matters.
+            runner(command.on_timeout, cwd=command.cwd, stderr_to_devnull=True, timeout=30)
     _prettify_json(
         request.report_path, path_key=scanner.path_key, exclude_dirs=request.exclude_dirs
     )

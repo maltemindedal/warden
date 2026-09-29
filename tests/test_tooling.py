@@ -2,6 +2,8 @@ from __future__ import annotations
 
 import json
 import os
+import re
+import signal
 import subprocess
 import sys
 import time
@@ -336,10 +338,14 @@ def test_zap_builds_its_docker_command_line(monkeypatch: MonkeyPatch, tmp_path: 
     _run(ZAP, tmp_path, runner, url="http://localhost:3000")
 
     command = runner.commands[0]
+    name = command.args[command.args.index("--name") + 1]
+    assert re.fullmatch(r"warden-zap-[0-9a-f]{32}", name)
     assert command.args == [
         "docker",
         "run",
         "--rm",
+        "--name",
+        name,
         "-v",
         f"{tmp_path.resolve()}:/zap/wrk/:rw",
         "-t",
@@ -366,7 +372,8 @@ def test_zap_mounts_the_host_report_dir_when_one_is_supplied(
     _run(ZAP, tmp_path, runner, url="http://example.test")
 
     mount = Path("/host/workspace") / ".security_reports"
-    assert runner.commands[0].args[4] == f"{mount}:/zap/wrk/:rw"
+    args = runner.commands[0].args
+    assert args[args.index("-v") + 1] == f"{mount}:/zap/wrk/:rw"
 
 
 def test_resolve_host_report_dir_prefers_the_explicit_report_dir(
@@ -759,3 +766,108 @@ def test_a_gitignore_that_is_a_named_pipe_is_left_alone_without_being_read(
 
     assert completed.returncode == 0
     assert (tmp_path / ".security_reports").is_dir()
+
+
+def test_a_timed_out_zap_container_is_killed_by_name(
+    monkeypatch: MonkeyPatch, tmp_path: Path
+) -> None:
+    """Stopping the `docker run` client leaves the container running: its PID 1 is the ZAP script,
+    which handles no signal. So the container is named, and killed by name after a timeout."""
+    _forget_host_path_variables(monkeypatch)
+    runner = RecordingRunner(returncode=None, timed_out=True)
+
+    _run(ZAP, tmp_path, runner, url="http://localhost:3000", timeout=5)
+
+    started, cleanup = runner.commands
+    name = started.args[started.args.index("--name") + 1]
+    assert cleanup.args == ["docker", "kill", name]
+    assert cleanup.stderr_to_devnull
+
+
+def test_no_container_is_killed_when_zap_finishes_or_a_static_scanner_times_out(
+    monkeypatch: MonkeyPatch, tmp_path: Path
+) -> None:
+    _forget_host_path_variables(monkeypatch)
+    finished = RecordingRunner()
+    timed_out = RecordingRunner(returncode=None, timed_out=True)
+
+    _run(ZAP, tmp_path, finished, url="http://localhost:3000")
+    _run(TRIVY, tmp_path, timed_out, timeout=5)
+
+    assert len(finished.commands) == 1
+    assert len(timed_out.commands) == 1
+
+
+def test_a_stopped_scanner_is_sent_a_stop_request_before_it_is_killed(tmp_path: Path) -> None:
+    """SIGTERM first: a scanner that can clean up (or pass the signal on) gets to."""
+    marker = tmp_path / "got-sigterm"
+    child = (
+        "import signal, sys, time\n"
+        f"def stop(*_): open({str(marker)!r}, 'w').close(); sys.exit(0)\n"
+        "signal.signal(signal.SIGTERM, stop)\n"
+        "time.sleep(60)\n"
+    )
+
+    result = tooling.run_subprocess([sys.executable, "-c", child], cwd=tmp_path, timeout=1.5)
+
+    assert result.timed_out
+    assert marker.exists()
+
+
+@pytest.mark.skipif(os.name != "posix", reason="a process group is a POSIX notion")
+def test_a_worker_the_scanner_started_is_stopped_with_it(tmp_path: Path) -> None:
+    """Semgrep runs `semgrep-core` as its own process: stopping only the wrapper left it running."""
+    heartbeat = tmp_path / "worker.heartbeat"
+    worker = (
+        "import os, time\n"
+        f"path = {str(heartbeat)!r}\n"
+        "while True:\n"
+        "    open(path, 'w').write(f'{os.getpid()} {time.perf_counter()}')\n"
+        "    time.sleep(0.05)\n"
+    )
+    wrapper = (
+        "import subprocess, sys, time\n"
+        f"subprocess.Popen([sys.executable, '-c', {worker!r}])\n"
+        "time.sleep(60)\n"
+    )
+
+    result = tooling.run_subprocess([sys.executable, "-c", wrapper], cwd=tmp_path, timeout=1.5)
+
+    assert result.timed_out
+    time.sleep(0.3)  # a zombie still exists to `kill(pid, 0)`, so watch for writes instead
+    before = heartbeat.read_text(encoding="utf-8")
+    time.sleep(0.5)
+    after = heartbeat.read_text(encoding="utf-8")
+    if before != after:
+        os.kill(int(after.split()[0]), signal.SIGKILL)
+    assert before == after, "the worker was still running after the scanner was stopped"
+
+
+@pytest.mark.skipif(os.name != "posix", reason="needs POSIX signals")
+def test_an_interrupt_while_waiting_for_a_scanner_to_stop_still_kills_it(
+    tmp_path: Path, monkeypatch: MonkeyPatch
+) -> None:
+    monkeypatch.setattr(tooling, "_STOP_GRACE_SECONDS", 30)
+    stubborn = "import signal, time; signal.signal(signal.SIGTERM, signal.SIG_IGN); time.sleep(60)"
+    process = subprocess.Popen(  # noqa: S603
+        [sys.executable, "-c", stubborn], cwd=tmp_path, start_new_session=True
+    )
+    time.sleep(0.5)  # let it install its handler
+    real_wait: Any = process.wait
+    calls = 0
+
+    def interrupted_once(timeout: float | None = None) -> int:
+        nonlocal calls
+        calls += 1
+        if calls == 1:
+            raise KeyboardInterrupt
+        returncode = real_wait(timeout=timeout)
+        assert isinstance(returncode, int)
+        return returncode
+
+    monkeypatch.setattr(process, "wait", interrupted_once)
+
+    with pytest.raises(KeyboardInterrupt):
+        tooling._stop(process)  # pyright: ignore[reportPrivateUsage]
+
+    assert process.poll() is not None

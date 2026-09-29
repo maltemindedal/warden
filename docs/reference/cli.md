@@ -29,7 +29,7 @@ usage: warden [-h] [-u URL] [--project-root PROJECT_ROOT] [--config CONFIG]
 | `--project-root` | `.` | Directory to scan. Must be an existing directory. Resolved to an absolute path; the report is written here. |
 | `--config` | `<project-root>/.warden.yaml` | Path to an alternate config file. |
 | `--strict` | off | Fail the run (exit `3`) when a scanner that ran left no usable report, or when no scanner ran. See [Behaviour](#behaviour). |
-| `--timeout` | none | Stop any single scanner that runs longer than this many seconds (a number greater than 0). See [Behaviour](#behaviour). |
+| `--timeout` | none | Stop any single scanner that runs longer than this many seconds (a number greater than 0 and at most 4294967). See [Behaviour](#behaviour). |
 | `-h`, `--help` | Not applicable | Print usage and exit. |
 
 The `-Url` and `--Url` spellings exist so the same invocation works in
@@ -73,13 +73,18 @@ PowerShell habits and POSIX shells. All four spellings set the same value.
   `.warden.yaml` are not held against the run. It is a flag and not a config key on
   purpose: an older Warden rejects an unknown flag, where it would ignore an unknown
   key and quietly run without the check.
-- **`--timeout` limits each scanner, not the run.** A scanner that is still going
-  after that many seconds is sent a stop signal (so `docker run` can pass it to the
-  ZAP container) and killed ten seconds later if it ignores it. Warden prints
-  `<tool> timed out after N seconds and was stopped.`, deletes whatever partial
-  report it left, and goes on to the next scanner. Like any scanner that fails to
-  run, that is a warning and not a failure; without the flag nothing is limited, and
-  a DAST scan can run for as long as ZAP takes.
+- **`--timeout` limits each scanner, not the run.** A scanner still going after that
+  many seconds is sent a stop request (SIGTERM), and whatever is left ten seconds
+  later is killed. On Linux and macOS the scanner is started as the leader of its own
+  process group and the whole group is signalled, so the workers it started (Semgrep
+  runs a separate `semgrep-core`) stop with it; on Windows only the scanner process
+  itself is stopped. Stopping the `docker run` client does not stop the ZAP container
+  (its script is the container's first process and handles no signal), so ZAP's
+  container is named and `docker kill` is run on it. Warden then prints
+  `<tool> timed out after N seconds and was stopped.`, deletes whatever partial report
+  the scanner left, and goes on to the next scanner. Like any scanner that fails to run,
+  that is a warning and not a failure (`--strict` makes it one); without the flag nothing
+  is limited, and a DAST scan can run for as long as ZAP takes.
 - Reports from a previous run are deleted before the scanners start. Only the
   files listed in [Report format](report-format.md#input-files) and `zap.html`
   are removed; anything else in the directory is left alone.

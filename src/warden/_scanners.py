@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import os
 import re
+import uuid
 from collections.abc import Callable
 from dataclasses import dataclass
 from pathlib import Path
@@ -35,6 +36,8 @@ class Command:
     cwd: Path
     stderr_to_devnull: bool = False
     env_overrides: dict[str, str] | None = None
+    on_timeout: list[str] | None = None
+    """A command to run, best effort, after this one was stopped for running too long."""
 
 
 CommandBuilder = Callable[[ScanRequest], Command]
@@ -167,10 +170,15 @@ def _build_gitleaks_command(request: ScanRequest) -> Command:
 
 
 def _build_zap_command(request: ScanRequest) -> Command:
+    # Stopping the `docker run` client does not stop the container: the ZAP script is the
+    # container's PID 1 and handles no signal. A name lets a timeout `docker kill` it.
+    container = f"warden-zap-{uuid.uuid4().hex}"
     args = [
         "docker",
         "run",
         "--rm",
+        "--name",
+        container,
         "-v",
         f"{resolve_host_report_dir(request.report_dir)}:/zap/wrk/:rw",
         "-t",
@@ -184,7 +192,7 @@ def _build_zap_command(request: ScanRequest) -> Command:
         ZAP_HTML_REPORT,
         "-I",
     ]
-    return Command(args=args, cwd=request.report_dir)
+    return Command(args=args, cwd=request.report_dir, on_timeout=["docker", "kill", container])
 
 
 @dataclass(slots=True, frozen=True)

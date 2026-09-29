@@ -12,6 +12,9 @@ from ._models import CliOptions, ResolvedConfig, ToolRunResult
 from ._scanners import SCANNERS, Scanner, rewrite_zap_target, url_problem
 from ._text import shown
 
+_MAX_TIMEOUT_SECONDS = 4_294_967
+"""Windows takes a timeout in milliseconds as an unsigned 32-bit number, so nothing larger works."""
+
 EXIT_INCOMPLETE = 3
 """`--strict`: no finding failed the build, but a scanner that ran left no usable report."""
 
@@ -50,8 +53,8 @@ def _parse_args(argv: list[str] | None = None) -> CliOptions:
     )
     namespace = parser.parse_args(argv)
     timeout = cast(float | None, namespace.timeout)
-    if timeout is not None and not timeout > 0:  # also rejects nan
-        parser.error("--timeout must be a number of seconds greater than 0")
+    if timeout is not None and not 0 < timeout <= _MAX_TIMEOUT_SECONDS:  # also rejects nan, inf
+        parser.error(f"--timeout must be a number of seconds from 0 up to {_MAX_TIMEOUT_SECONDS}")
     project_root = Path(cast(str, namespace.project_root)).resolve()
     if not project_root.is_dir():
         parser.error(f"--project-root {project_root} is not an existing directory")
