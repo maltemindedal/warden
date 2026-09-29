@@ -20,8 +20,10 @@ What the parser supports:
 - Top-level `key: value` scalars
 - Exactly one level of nesting, under `exclude_dirs` (a `-` list) and `tools` (a
   mapping)
-- `#` comments, including trailing comments, with `\` escaping
-- Single or double quoted strings
+- `#` comments, including trailing comments. A `#` inside a quoted value is part of
+  the value; outside quotes it starts a comment unless it is escaped with `\`
+- Single or double quoted strings, which are the way to write a URL that contains
+  a `#` (`target_url: "http://localhost:4200/#/login"`)
 
 What it does **not** support: anchors, multi-line strings, nested mappings
 deeper than one level, inline `[a, b]` or `{a: b}` collections, or documents

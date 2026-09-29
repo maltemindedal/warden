@@ -17,21 +17,61 @@ RawConfig = dict[str, RawConfigValue]
 CONFIG_FILENAME = ".warden.yaml"
 
 
-def _strip_comment(line: str) -> str:
-    out: list[str] = []
-    escaped = False
-    for character in line:
-        if escaped:
-            out.append(character)
-            escaped = False
-            continue
+def _closing_quote(line: str, start: int) -> int | None:
+    """Where the quote opened at `start` closes, or `None`. Honours `\\` and a doubled `'`."""
+    quote = line[start]
+    index = start + 1
+    while index < len(line):
+        character = line[index]
         if character == "\\":
-            out.append(character)
-            escaped = True
+            index += 2
             continue
+        if character == quote:
+            if quote == "'" and line[index + 1 : index + 2] == "'":
+                index += 2
+                continue
+            return index
+        index += 1
+    return None
+
+
+def _strip_comment(line: str) -> str:
+    """Cut the line at the first `#` that is not escaped and not inside a quoted value.
+
+    A quote only opens a value where a value can start (after `:` or a list `-`), and only when
+    it is closed on the same line; anywhere else it is an ordinary character. One pass, so a long
+    line costs no more than its length, and a project controls the file.
+    """
+    out: list[str] = []
+    first = last = ""  # the first and the last character of what is kept, ignoring spaces
+    kept = 0  # how many characters that is
+
+    def keep(text: str) -> None:
+        nonlocal first, last, kept
+        out.append(text)
+        for character in text:
+            if not character.isspace():
+                first = character if kept == 0 else first
+                last = character
+                kept += 1
+
+    index = 0
+    while index < len(line):
+        character = line[index]
+        if character == "\\":
+            keep(line[index : index + 2])
+            index += 2
+            continue
+        if character in "\"'" and (last == ":" or (kept == 1 and first == "-")):
+            closing = _closing_quote(line, index)
+            if closing is not None:
+                keep(line[index : closing + 1])
+                index = closing + 1
+                continue
         if character == "#":
             break
-        out.append(character)
+        keep(character)
+        index += 1
     return "".join(out).rstrip("\r\n")
 
 

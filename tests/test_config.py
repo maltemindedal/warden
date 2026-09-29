@@ -5,6 +5,7 @@ import os
 import subprocess
 import sys
 import threading
+import time
 from pathlib import Path
 
 import pytest
@@ -43,6 +44,39 @@ def test_parse_minimal_yaml_strips_comments_but_keeps_an_escaped_hash() -> None:
 
     assert raw_config["target_url"] == "http://localhost:3000"
     assert raw_config["url"] == "http://localhost:3000/\\#/login"
+
+
+@pytest.mark.parametrize(
+    ("line", "expected"),
+    [
+        ('target_url: "http://app/path#frag"', "http://app/path#frag"),
+        ("target_url: 'http://app/#/login'  # the app", "http://app/#/login"),
+        ("target_url: 'it''s # not a comment'", "it''s # not a comment"),
+        # Unquoted, a `#` still starts a comment, as it always did.
+        ("target_url: http://localhost:4200/#/login", "http://localhost:4200/"),
+        # A quote only opens a value where a value starts, and only if it is closed.
+        ('target_url: "http://app#unterminated', '"http://app'),
+        ('target_url: it"s # comment"', 'it"s'),
+    ],
+)
+def test_a_hash_inside_a_quoted_value_is_part_of_the_value(line: str, expected: str) -> None:
+    assert parse_minimal_yaml(line)["target_url"] == expected
+
+
+def test_a_hash_inside_a_quoted_list_item_is_part_of_the_item() -> None:
+    raw_config = parse_minimal_yaml('exclude_dirs:\n  - "vendor#1/"  # third party\n  - build/\n')
+
+    assert raw_config["exclude_dirs"] == ["vendor#1/", "build/"]
+
+
+def test_a_long_line_of_quotes_is_parsed_in_linear_time() -> None:
+    """A project controls `.warden.yaml`, and rescanning for a closing quote was quadratic."""
+    hostile = "target_url: " + 'x:"' * 200_000
+
+    started = time.perf_counter()
+    parse_minimal_yaml(hostile)
+
+    assert time.perf_counter() - started < 5
 
 
 def test_parse_minimal_yaml_reads_the_scalar_forms_it_supports() -> None:
