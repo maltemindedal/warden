@@ -212,6 +212,34 @@ def test_a_utf8_byte_order_mark_does_not_swallow_the_first_key(
     assert ("gitleaks" in resolved.enabled_tools) is gitleaks_enabled
 
 
+@pytest.mark.parametrize(
+    ("scalar", "expected"),
+    [
+        ("12", 12),
+        ("-5", -5),
+        ("\u0663", 3),
+        ("\u00b2", "\u00b2"),
+        ("\u2460", "\u2460"),
+        pytest.param("9" * 5000, "9" * 5000, id="over-4300-digits"),
+    ],
+)
+def test_a_numeric_looking_config_value_never_raises(scalar: str, expected: object) -> None:
+    """`\u00b2` and over-long digit strings used to raise, discarding the whole config file."""
+    assert parse_minimal_yaml(f"retries: {scalar}\n")["retries"] == expected
+
+
+def test_a_value_that_int_cannot_read_does_not_cost_the_rest_of_the_config(
+    tmp_path: Path,
+) -> None:
+    (tmp_path / ".warden.yaml").write_text(
+        "retries: \u00b2\ntools:\n  gitleaks: false\n", encoding="utf-8"
+    )
+
+    resolved = resolve_config(project_root=tmp_path, cli_url="")
+
+    assert "gitleaks" not in resolved.enabled_tools
+
+
 def test_config_main_reports_every_scanner_as_enabled_by_default(
     tmp_path: Path,
     capsys: CaptureFixture[str],

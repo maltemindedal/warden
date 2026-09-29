@@ -47,6 +47,27 @@ def test_get_int_accepts_a_numeric_string_and_rejects_anything_else() -> None:
     assert get_int({"riskcode": "high"}, "riskcode") is None
 
 
+@pytest.mark.parametrize(
+    ("value", "expected"),
+    [
+        (5, 5),
+        ("  42 ", 42),
+        ("\u0663", 3),  # Arabic-Indic digit three: int() has always accepted it
+        ("\u00b2", None),  # superscript two: isdigit() is true but int() raises
+        ("\u2460", None),  # circled one, likewise
+        pytest.param("9" * 5000, None, id="over-4300-digits"),  # int() refuses that many
+        (True, None),  # JSON `true` is not a line number
+        (False, None),
+        (None, None),
+        ("-3", None),
+    ],
+)
+def test_get_int_takes_only_what_int_can_read_and_never_raises(
+    value: object, expected: int | None
+) -> None:
+    assert get_int({"line": value}, "line") == expected
+
+
 def test_load_json_returns_the_parsed_document_when_the_file_is_valid(tmp_path: Path) -> None:
     report = tmp_path / "trivy.json"
     report.write_text('{"Results": []}', encoding="utf-8")

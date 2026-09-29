@@ -50,8 +50,13 @@ def _parse_scalar(raw: str) -> ScalarValue:
         return True
     if lowered in {"false", "no", "off"}:
         return False
-    if lowered.isdigit() or (lowered.startswith("-") and lowered[1:].isdigit()):
-        return int(lowered)
+    # `isdecimal`, not `isdigit`: `isdigit` is also true for characters such as "\u00b2" that
+    # `int` rejects, and the ValueError would discard the whole config file.
+    if lowered.isdecimal() or (lowered.startswith("-") and lowered[1:].isdecimal()):
+        try:
+            return int(lowered)
+        except ValueError:  # more digits than int() will convert
+            return value
     return value
 
 

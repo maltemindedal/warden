@@ -40,10 +40,14 @@ def get_string(mapping: Mapping[str, object], key: str) -> str | None:
 
 def get_int(mapping: Mapping[str, object], key: str) -> int | None:
     value = mapping.get(key)
-    if isinstance(value, int):
+    # A bool is an int, but JSON `true` is not a number worth reporting.
+    if isinstance(value, int) and not isinstance(value, bool):
         return value
-    if isinstance(value, str) and value.strip().isdigit():
-        return int(value.strip())
+    if isinstance(value, str) and value.strip().isdecimal():
+        try:
+            return int(value.strip())
+        except ValueError:  # more digits than int() will convert
+            return None
     return None
 
 
