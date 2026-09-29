@@ -64,7 +64,12 @@ target-version = "py311"
 src = ["src", "tests"]
 
 [tool.ruff.lint]
-select = ["B", "E", "F", "I", "UP", "W"]
+# S: security (bandit), BLE: blind `except`, PGH: blanket `noqa` / `type: ignore`.
+select = ["B", "BLE", "E", "F", "I", "PGH", "S", "UP", "W"]
+
+[tool.ruff.lint.per-file-ignores]
+# Tests assert by design and run fixed, list-form commands.
+"tests/**" = ["S101", "S603", "S607"]
 
 [tool.ruff.format]
 # ruff 0.16 formats Markdown by default. Keep the check on Python files, which is what it

@@ -108,7 +108,7 @@ def run_subprocess(
         environment.update(env_overrides)
 
     try:
-        completed = subprocess.run(
+        completed = subprocess.run(  # noqa: S603 - a list of arguments, never a shell string
             args,
             cwd=str(cwd),
             env=environment,

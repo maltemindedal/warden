@@ -46,7 +46,7 @@ uv run ruff format .
 | Check | Configured in | Notes |
 | --- | --- | --- |
 | `ruff format` | `[tool.ruff.format]` | 100-character lines, double quotes, spaces. |
-| `ruff check` | `[tool.ruff.lint]` | Rule sets `B`, `E`, `F`, `I`, `UP`, `W`. Import sorting is included via `I`. |
+| `ruff check` | `[tool.ruff.lint]` | Rule sets `B`, `BLE`, `E`, `F`, `I`, `PGH`, `S`, `UP`, `W`. Import sorting is included via `I`; `S` is the bandit security rules (asserts and list-form `subprocess` calls are allowed in tests). |
 | `ty check` | `[tool.ty.*]` | **All rules as errors.** Targets Python 3.11 across `src` and `tests`. |
 | `pytest` | `[tool.pytest.ini_options]` | Tests live in `tests/`, with `src` on the path. |
 
