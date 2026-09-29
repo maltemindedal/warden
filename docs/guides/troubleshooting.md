@@ -111,8 +111,8 @@ Warden keeps the raw reports out of version control by appending
 `.security_reports/` to the project's `.gitignore`. When it cannot (the file is
 read-only, or not text, such as a UTF-16 file) it prints this warning, gives the
 reason, and carries on with the scan. Nothing is ignored in that case, so add
-`.security_reports/` to your ignore rules yourself: the reports can hold
-matched secrets.
+`.security_reports/` to your ignore rules yourself: Gitleaks redacts the secrets
+it finds, but the reports still name every finding and where it is.
 
 ## Changes to `.warden.yaml` have no effect
 

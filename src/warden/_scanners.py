@@ -133,6 +133,9 @@ def _build_gitleaks_command(request: ScanRequest) -> Command:
         str(request.report_path),
         "--exit-code",
         "0",
+        # The raw report otherwise holds every matched secret in clear text. Only the rule, the
+        # file and the line are read from it.
+        "--redact",
     ]
     return Command(args=args, cwd=request.project_root, stderr_to_devnull=True)
 

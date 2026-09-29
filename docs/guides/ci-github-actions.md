@@ -86,17 +86,20 @@ downloading the artifact.
 1. Builds the bundled `Dockerfile` as `warden:action`.
 2. Runs it against `GITHUB_WORKSPACE`, mounted at `/src`, as the runner's own
    user ID, with the Docker socket mounted for the optional ZAP scan.
-3. Uploads `security_audit.json` and `.security_reports/**` as an artifact. The
-   `if: always()` condition preserves reports from a failing scan.
+3. Uploads `security_audit.json` as an artifact (`.security_reports/**` is listed
+   too, but see below). The `if: always()` condition preserves the report from a
+   failing scan.
 
 Because step 1 builds the image on every run, expect roughly a minute of build
 time before scanning starts.
 
-The uploaded artifact contains raw scanner output. Gitleaks findings are
-redacted before they reach `security_audit.json`, but `.security_reports/` holds
-each tool's raw report (`gitleaks.json` with the findings under `exclude_dirs`
-removed, and still holding the matched secrets). Treat the artifact as sensitive
-and keep it private.
+The artifact contains `security_audit.json`, in which Gitleaks findings are
+redacted. The action also lists `.security_reports/**`, but that directory starts
+with a dot and `actions/upload-artifact` skips hidden files unless it is given
+`include-hidden-files: true`, so the raw scanner reports are not uploaded. They
+stay on the runner in `.security_reports/`, where `gitleaks.json` shows where each
+secret is but not the secret itself (Gitleaks runs with `--redact`). Keep the
+artifact private anyway: it names every finding.
 
 ## Other CI systems
 

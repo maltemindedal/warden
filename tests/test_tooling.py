@@ -134,6 +134,7 @@ def test_gitleaks_builds_its_command_line(tmp_path: Path) -> None:
         str(tmp_path.resolve() / "gitleaks.json"),
         "--exit-code",
         "0",
+        "--redact",
     ]
     assert command.cwd == tmp_path.resolve()
     assert command.stderr_to_devnull
