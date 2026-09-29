@@ -11,7 +11,7 @@ one report with one exit code:
 
 | Tool | Finds |
 | --- | --- |
-| Trivy | Vulnerable dependencies and misconfigured infrastructure files |
+| Trivy | Vulnerable dependencies |
 | Semgrep | Insecure code patterns (SAST) |
 | Gitleaks | Committed secrets |
 | OWASP ZAP | Optional DAST for vulnerabilities in a *running* web app |

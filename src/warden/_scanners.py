@@ -79,7 +79,20 @@ def resolve_host_report_dir(report_dir: str | Path) -> Path:
 
 
 def _build_trivy_command(request: ScanRequest) -> Command:
-    args = ["trivy", "fs", ".", "--format", "json", "--output", str(request.report_path), "--quiet"]
+    # Only vulnerabilities are read (`parse_trivy`). Trivy's default also runs its secret scanner
+    # over the whole tree, whose result is discarded and which Gitleaks already covers.
+    args = [
+        "trivy",
+        "fs",
+        ".",
+        "--format",
+        "json",
+        "--output",
+        str(request.report_path),
+        "--quiet",
+        "--scanners",
+        "vuln",
+    ]
     if request.exclude_dirs:
         args.extend(["--skip-dirs", ",".join(request.exclude_dirs)])
     return Command(args=args, cwd=request.project_root)

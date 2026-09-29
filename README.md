@@ -9,7 +9,7 @@ in CI.
 
 | Tool | Finds |
 | --- | --- |
-| [Trivy](https://trivy.dev) | Vulnerable dependencies, misconfigured infrastructure |
+| [Trivy](https://trivy.dev) | Vulnerable dependencies |
 | [Semgrep](https://semgrep.dev) | Insecure code patterns (SAST) |
 | [Gitleaks](https://github.com/gitleaks/gitleaks) | Committed secrets |
 | [OWASP ZAP](https://www.zaproxy.org) | Vulnerabilities in a running web app (DAST, optional) |

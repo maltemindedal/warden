@@ -68,6 +68,8 @@ def test_trivy_builds_its_command_line(tmp_path: Path) -> None:
         "--output",
         str(tmp_path.resolve() / "trivy.json"),
         "--quiet",
+        "--scanners",
+        "vuln",
     ]
     assert command.cwd == tmp_path.resolve()
     assert not command.stderr_to_devnull
