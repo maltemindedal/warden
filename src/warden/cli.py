@@ -2,12 +2,13 @@ from __future__ import annotations
 
 import argparse
 import sys
+from dataclasses import replace
 from pathlib import Path
 from typing import cast
 
 from . import aggregate, config, tooling
 from ._models import CliOptions, ResolvedConfig, ToolRunResult
-from ._scanners import SCANNERS, Scanner, rewrite_zap_target
+from ._scanners import SCANNERS, Scanner, rewrite_zap_target, url_problem
 
 
 def _parse_args(argv: list[str] | None = None) -> CliOptions:
@@ -43,6 +44,11 @@ def _describe(error: OSError) -> str:
     return (
         f"{error.filename}: {error.strerror}" if error.filename and error.strerror else str(error)
     )
+
+
+def _shown(text: str, limit: int = 120) -> str:
+    """Project-supplied text, escaped so it cannot drive the terminal, and cut to a sane length."""
+    return repr(text[:limit]) + ("..." if len(text) > limit else "")
 
 
 def _fail(message: str) -> int:
@@ -127,7 +133,13 @@ def run_audit(options: CliOptions, *, runner: tooling.CommandRunner) -> int:
     print("STARTING SECURITY AUDIT")
     print(f"   Target: {options.project_root}")
     if resolved.url:
-        print(f"   DAST URL: {resolved.url}")
+        problem = url_problem(resolved.url)
+        if problem is None:
+            print(f"   DAST URL: {resolved.url}")
+        else:
+            shown = _shown(resolved.url)
+            print(f"Warning: the DAST URL {shown} is not usable ({problem}): skipping ZAP.")
+            resolved = replace(resolved, url="")
 
     _run_enabled_tools(options.project_root, report_dir, resolved, runner)
 

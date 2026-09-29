@@ -37,6 +37,11 @@ PowerShell habits and POSIX shells. All four spellings set the same value.
 - **A URL alone is not enough to run ZAP.** If `tools.zap` is `false` in the
   config, the resolved URL is discarded and ZAP is skipped, even when `--url` is
   passed explicitly. See [Configuration](configuration.md#interaction-between-target_url-and-toolszap).
+- **The URL must be `http://` or `https://` with a host and no control characters.**
+  Anything else (`localhost:3000` without a scheme, `ftp://...`, an escape
+  sequence in the value) prints `Warning: the DAST URL ... is not usable` and skips
+  ZAP; the other scanners still run and the exit code is unaffected. ZAP itself
+  rejects such a target, so nothing that worked is lost.
 - A URL host of `localhost` or `127.0.0.1` is rewritten to
   `host.docker.internal` before ZAP runs, so the ZAP container can reach an app
   on the host. Only the host is rewritten, not the same text in the path or query.

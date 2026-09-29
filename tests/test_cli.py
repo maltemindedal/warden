@@ -208,3 +208,35 @@ def test_a_directory_where_the_report_goes_is_a_clear_error_after_the_scans_ran(
     assert "warden: error: cannot read the reports or write security_audit.json" in (
         capsys.readouterr().err
     )
+
+
+@pytest.mark.parametrize(
+    "url",
+    ["localhost:3000", "ftp://example.com", "http://", "http://example.com/\x1b[31mred"],
+)
+def test_an_unusable_dast_url_is_a_warning_and_zap_is_skipped(
+    tmp_path: Path, capsys: CaptureFixture[str], url: str
+) -> None:
+    runner = RecordingRunner(report_text="{}")
+
+    exit_code = cli.main(["--project-root", str(tmp_path), "--url", url], runner=runner)
+
+    output = capsys.readouterr().out
+    assert exit_code == 0
+    assert not [command for command in runner.commands if "zap-full-scan.py" in command.args]
+    assert "Warning: the DAST URL" in output
+    assert "skipping ZAP" in output
+    assert "DAST URL:" not in output
+    assert "[4/4] Skipping ZAP" in output
+    assert "\x1b" not in output
+
+
+def test_a_usable_dast_url_is_announced_and_scanned(
+    tmp_path: Path, capsys: CaptureFixture[str]
+) -> None:
+    runner = RecordingRunner(report_text="{}")
+
+    cli.main(["--project-root", str(tmp_path), "--url", "https://example.com"], runner=runner)
+
+    assert "   DAST URL: https://example.com" in capsys.readouterr().out
+    assert _zap_target(runner) == "https://example.com"

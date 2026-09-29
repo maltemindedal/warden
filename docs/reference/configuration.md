@@ -45,7 +45,9 @@ silently. Verify with `warden-config .` when in doubt.
 | Default | `""` |
 | Alias | `url` |
 
-DAST target for OWASP ZAP. When empty, ZAP is skipped.
+DAST target for OWASP ZAP. When empty, ZAP is skipped. It must start with
+`http://` or `https://` and have a host; anything else is reported with a warning
+and ZAP is skipped.
 
 `url` is accepted as an alias. If both are present, `target_url` wins.
 

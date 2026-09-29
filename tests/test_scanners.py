@@ -10,7 +10,7 @@ from fakes import RecordingRunner
 from warden import tooling
 from warden._models import Finding
 from warden._parsers import parse_zap
-from warden._scanners import CATEGORY_ORDER, SCANNERS, ZAP, Scanner, rewrite_zap_target
+from warden._scanners import CATEGORY_ORDER, SCANNERS, ZAP, Scanner, rewrite_zap_target, url_problem
 from warden._summary import judge
 from warden.config import resolve_config
 
@@ -179,4 +179,53 @@ def test_a_hostile_url_is_rewritten_in_linear_time() -> None:
     result = rewrite_zap_target(hostile)
 
     assert result == hostile
+    assert time.perf_counter() - started < 5
+
+
+@pytest.mark.parametrize(
+    "url",
+    [
+        "http://localhost:3000",
+        "https://example.com",
+        "HTTP://Example.com/",
+        "http://user:pw@host:8080/path?q=1#frag",
+        "http://[::1]:3000/",
+        "http://127.0.0.1",
+    ],
+)
+def test_an_http_url_with_a_host_is_a_usable_dast_target(url: str) -> None:
+    assert url_problem(url) is None
+
+
+@pytest.mark.parametrize(
+    ("url", "problem"),
+    [
+        ("localhost:3000", "does not start with http:// or https://"),
+        ("ftp://example.com", "does not start with http:// or https://"),
+        ("file:///etc/passwd", "does not start with http:// or https://"),
+        ("//example.com", "does not start with http:// or https://"),
+        ("http://", "has no host"),
+        ("http:///path", "has no host"),
+        ("http://:3000/", "has no host"),
+        ("http://user:pw@/", "has no host"),
+        ("http://[", "has no host"),
+        ("http://example.com/\x1b[2J", "contains control characters"),
+        ("http://example.com\x00", "contains control characters"),
+        ("http://example.com/\n", "contains control characters"),
+    ],
+)
+def test_a_url_that_is_not_http_with_a_host_or_holds_control_characters_is_refused(
+    url: str, problem: str
+) -> None:
+    assert url_problem(url) is not None
+    assert problem in (url_problem(url) or "")
+
+
+def test_a_hostile_url_is_checked_in_linear_time() -> None:
+    hostile = "http://" + "@" * 1_000_000
+
+    started = time.perf_counter()
+    result = url_problem(hostile)
+
+    assert result == "it has no host"
     assert time.perf_counter() - started < 5

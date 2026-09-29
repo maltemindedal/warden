@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import os
 import re
+import unicodedata
 from collections.abc import Callable
 from dataclasses import dataclass
 from pathlib import Path
@@ -44,6 +45,7 @@ CommandBuilder = Callable[[ScanRequest], Command]
 # authority up to the first `/`, `?` or `#`, whose host follows its last `@`.
 _URL_LEAD: Final = re.compile(r"(?:[A-Za-z][A-Za-z0-9+.-]*:)?//")
 _AUTHORITY_END: Final = re.compile(r"[/?#]")
+_HTTP_LEAD: Final = re.compile(r"https?://", re.IGNORECASE)
 _LOOPBACK_HOST: Final = re.compile(r"(?:localhost|127\.0\.0\.1)(?P<dot>\.?)(?=:|\Z)")
 
 
@@ -64,6 +66,30 @@ def rewrite_zap_target(url: str) -> str:
     if host is None:
         return url
     return f"{url[:host_start]}host.docker.internal{host['dot']}{url[host.end() :]}"
+
+
+def url_problem(url: str) -> str | None:
+    """Why `url` cannot be a DAST target, or `None` if it looks like one.
+
+    ZAP only takes an `http://` or `https://` target with a host. A project supplies the URL, so
+    a control character in it (an escape sequence, say) must never reach the terminal either.
+    """
+    if any(unicodedata.category(character) == "Cc" for character in url):
+        return "it contains control characters"
+    lead = _HTTP_LEAD.match(url)
+    if lead is None:
+        return "it does not start with http:// or https://"
+    boundary = _AUTHORITY_END.search(url, lead.end())
+    authority = url[lead.end() : boundary.start() if boundary else len(url)]
+    host_and_port = authority.rpartition("@")[2]
+    host = (
+        host_and_port[: host_and_port.find("]") + 1]
+        if host_and_port.startswith("[")
+        else (host_and_port.partition(":")[0])
+    )
+    if not host:
+        return "it has no host"
+    return None
 
 
 def resolve_host_report_dir(report_dir: str | Path) -> Path:
