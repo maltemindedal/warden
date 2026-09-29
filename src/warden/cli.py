@@ -104,6 +104,7 @@ def run_audit(options: CliOptions, *, runner: tooling.CommandRunner) -> int:
     )
     report_dir = tooling.prepare_report_dir(options.project_root)
     output_file = options.project_root / "security_audit.json"
+    tooling.clear_output_file(output_file)
 
     print("STARTING SECURITY AUDIT")
     print(f"   Target: {options.project_root}")

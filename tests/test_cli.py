@@ -6,7 +6,7 @@ from pathlib import Path
 
 from pytest import CaptureFixture
 
-from fakes import RecordingRunner
+from fakes import RecordingRunner, symlink_or_skip
 from warden import cli
 from warden._scanners import SCANNERS
 
@@ -123,3 +123,20 @@ def test_cli_warns_and_continues_when_a_scanner_fails(
     output = capsys.readouterr().out
     assert exit_code == 0
     assert "   -> Warning: Trivy exited with status 2." in output
+
+
+def test_a_symlink_where_the_report_goes_is_replaced_not_followed(tmp_path: Path) -> None:
+    victim = tmp_path / "victim.txt"
+    victim.write_text("keep me", encoding="utf-8")
+    project = tmp_path / "project"
+    project.mkdir()
+    (project / ".warden.yaml").write_text(DISABLE_EVERY_TOOL, encoding="utf-8")
+    symlink_or_skip(project / "security_audit.json", victim)
+
+    exit_code = cli.main(["--project-root", str(project)], runner=RecordingRunner())
+
+    report = project / "security_audit.json"
+    assert exit_code == 0
+    assert victim.read_text(encoding="utf-8") == "keep me"
+    assert not report.is_symlink()
+    assert json.loads(report.read_text(encoding="utf-8"))["summary"]["total_issues"] == 0

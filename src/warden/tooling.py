@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 import os
+import stat
 import subprocess
 from collections.abc import Sequence
 from pathlib import Path
@@ -41,7 +42,8 @@ def _clear_stale_reports(report_dir: Path) -> None:
 
 def _ignore_report_dir(root: Path) -> None:
     gitignore_path = root / ".gitignore"
-    if not gitignore_path.exists():
+    # A symlinked or special `.gitignore` is left alone: appending would write through the link.
+    if gitignore_path.is_symlink() or not gitignore_path.is_file():
         return
 
     existing_lines = gitignore_path.read_text(encoding="utf-8").splitlines()
@@ -58,10 +60,29 @@ def prepare_report_dir(project_root: str | Path) -> Path:
     """Create `.security_reports/`, gitignore it, and drop any previous run's reports."""
     root = Path(project_root).resolve()
     report_dir = root / ".security_reports"
+    # A project can ship this name as a symlink, and the reports below are deleted and written
+    # through it. Replace the link with a real directory rather than follow it.
+    if report_dir.is_symlink():
+        report_dir.unlink()
     report_dir.mkdir(parents=True, exist_ok=True)
     _clear_stale_reports(report_dir)
     _ignore_report_dir(root)
     return report_dir
+
+
+def clear_output_file(path: Path) -> None:
+    """Remove a symlink or named pipe sitting where the report will be written.
+
+    A project can ship `security_audit.json` as a symlink, and writing then follows it to a file
+    elsewhere, or as a named pipe, and opening one for writing blocks forever. Warden owns the
+    name, so either is replaced by the regular file it writes. Anything else is left alone.
+    """
+    try:
+        mode = path.lstat().st_mode
+    except OSError:
+        return
+    if stat.S_ISLNK(mode) or stat.S_ISFIFO(mode):
+        path.unlink()
 
 
 def run_subprocess(

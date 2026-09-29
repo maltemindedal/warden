@@ -173,7 +173,10 @@ def resolve_config(
     path = Path(config_path).resolve() if config_path is not None else root / CONFIG_FILENAME
 
     raw: RawConfig = {}
-    if path.exists():
+    # The project's own `.warden.yaml` is untrusted: a named pipe there blocks forever and
+    # `/dev/zero` never ends, so only a regular file is read. A path passed with `--config` is the
+    # user's own choice and is read as it always was, whatever kind of file it is.
+    if path.exists() if config_path is not None else path.is_file():
         try:
             raw = parse_minimal_yaml(path.read_text(encoding="utf-8"))
         except (OSError, UnicodeDecodeError, ValueError):

@@ -3,6 +3,8 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from pathlib import Path
 
+import pytest
+
 from warden._models import CommandResult
 
 
@@ -51,3 +53,11 @@ class RecordingRunner:
             if arg.endswith(".json"):
                 (command.cwd / arg).write_text(text, encoding="utf-8")
                 return
+
+
+def symlink_or_skip(link: Path, target: Path) -> None:
+    """Symlinks need a privilege on some Windows setups, and the behavior under test needs one."""
+    try:
+        link.symlink_to(target)
+    except (OSError, NotImplementedError):
+        pytest.skip("this platform cannot create symlinks")

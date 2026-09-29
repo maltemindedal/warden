@@ -27,8 +27,10 @@ What it does **not** support: anchors, multi-line strings, nested mappings
 deeper than one level, inline `[a, b]` or `{a: b}` collections, or documents
 with `---` separators. Unrecognised top-level keys are parsed and then ignored.
 
-A file that cannot be read or parsed is treated as empty. Warden falls back to
-defaults rather than reporting an error. A malformed config therefore fails
+A file that cannot be read or parsed is treated as empty, and so is the
+project's own `.warden.yaml` when it is not a regular file (a named pipe, say).
+A path given with `--config` is read as given. Warden falls back to defaults rather than
+reporting an error. A malformed config therefore fails
 silently. Verify with `warden-config .` when in doubt.
 
 ## Keys

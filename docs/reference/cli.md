@@ -43,6 +43,11 @@ PowerShell habits and POSIX shells. All four spellings set the same value.
 - The report directory `.security_reports/` is created inside the project root
   if absent, and `.security_reports/` is appended to the project's `.gitignore`
   if that file exists and does not already list it.
+- Warden never writes through a symlink at a path it owns, because the project
+  it scans is not trusted. A symlink named `.security_reports` is replaced by a
+  real directory, a symlink or named pipe named `security_audit.json` is replaced
+  by the report, and a `.gitignore` that is a symlink or not a regular file is left
+  untouched.
 - Reports from a previous run are deleted before the scanners start. Only the
   files listed in [Report format](report-format.md#input-files) and `zap.html`
   are removed; anything else in the directory is left alone.

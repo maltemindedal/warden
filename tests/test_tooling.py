@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 import os
+import subprocess
 import sys
 import time
 from collections.abc import Sequence
@@ -10,7 +11,7 @@ from pathlib import Path
 import pytest
 from pytest import MonkeyPatch
 
-from fakes import RecordingRunner
+from fakes import RecordingRunner, symlink_or_skip
 from warden import tooling
 from warden._models import ToolRunResult
 from warden._scanners import (
@@ -495,3 +496,106 @@ def test_prepare_report_dir_appends_to_an_existing_gitignore(tmp_path: Path) -> 
     tooling.prepare_report_dir(tmp_path)
 
     assert ".security_reports/" in gitignore.read_text(encoding="utf-8").splitlines()
+
+
+def test_prepare_report_dir_replaces_a_symlinked_report_dir_instead_of_following_it(
+    tmp_path: Path,
+) -> None:
+    """A project can ship `.security_reports -> <elsewhere>`; nothing there may be deleted."""
+    victim = tmp_path / "victim"
+    victim.mkdir()
+    (victim / "trivy.json").write_text("{}", encoding="utf-8")
+    (victim / "notes.txt").write_text("keep me", encoding="utf-8")
+    project = tmp_path / "project"
+    project.mkdir()
+    symlink_or_skip(project / ".security_reports", victim)
+
+    report_dir = tooling.prepare_report_dir(project)
+
+    assert report_dir.is_dir()
+    assert not report_dir.is_symlink()
+    assert (victim / "trivy.json").read_text(encoding="utf-8") == "{}"
+    assert (victim / "notes.txt").read_text(encoding="utf-8") == "keep me"
+
+
+def test_a_symlinked_gitignore_is_not_appended_to(tmp_path: Path) -> None:
+    victim = tmp_path / "victim.txt"
+    victim.write_text("keep me\n", encoding="utf-8")
+    project = tmp_path / "project"
+    project.mkdir()
+    symlink_or_skip(project / ".gitignore", victim)
+
+    tooling.prepare_report_dir(project)
+
+    assert victim.read_text(encoding="utf-8") == "keep me\n"
+
+
+def test_clear_output_file_removes_a_symlink_without_touching_its_target(tmp_path: Path) -> None:
+    """A project can ship `security_audit.json -> ~/.bashrc`; the report must not land there."""
+    victim = tmp_path / "victim.txt"
+    victim.write_text("keep me", encoding="utf-8")
+    output_file = tmp_path / "security_audit.json"
+    symlink_or_skip(output_file, victim)
+
+    tooling.clear_output_file(output_file)
+
+    assert not output_file.exists() and not output_file.is_symlink()
+    assert victim.read_text(encoding="utf-8") == "keep me"
+
+
+def test_clear_output_file_removes_a_dangling_symlink_without_creating_its_target(
+    tmp_path: Path,
+) -> None:
+    target = tmp_path / "does-not-exist.txt"
+    output_file = tmp_path / "security_audit.json"
+    symlink_or_skip(output_file, target)
+
+    tooling.clear_output_file(output_file)
+
+    assert not output_file.is_symlink()
+    assert not target.exists()
+
+
+@pytest.mark.skipif(not hasattr(os, "mkfifo"), reason="needs named pipes")
+def test_clear_output_file_removes_a_named_pipe(tmp_path: Path) -> None:
+    """Opening a pipe for writing blocks forever, so the report could never be written."""
+    output_file = tmp_path / "security_audit.json"
+    os.mkfifo(output_file)
+
+    tooling.clear_output_file(output_file)
+
+    assert not output_file.exists()
+
+
+def test_clear_output_file_leaves_a_regular_file_and_a_missing_path_alone(tmp_path: Path) -> None:
+    existing = tmp_path / "security_audit.json"
+    existing.write_text("old report", encoding="utf-8")
+
+    tooling.clear_output_file(existing)
+    tooling.clear_output_file(tmp_path / "missing.json")
+
+    assert existing.read_text(encoding="utf-8") == "old report"
+
+
+@pytest.mark.skipif(not hasattr(os, "mkfifo"), reason="needs named pipes")
+def test_a_gitignore_that_is_a_named_pipe_is_left_alone_without_being_read(
+    tmp_path: Path,
+) -> None:
+    """Reading a pipe blocks forever. Run in a subprocess so a regression fails on the timeout."""
+    os.mkfifo(tmp_path / ".gitignore")
+
+    completed = subprocess.run(
+        [
+            sys.executable,
+            "-c",
+            "import sys; from warden import tooling; tooling.prepare_report_dir(sys.argv[1])",
+            str(tmp_path),
+        ],
+        capture_output=True,
+        check=False,
+        env={**os.environ, "PYTHONPATH": str(Path(__file__).parents[1] / "src")},
+        timeout=30,
+    )
+
+    assert completed.returncode == 0
+    assert (tmp_path / ".security_reports").is_dir()

@@ -1,8 +1,13 @@
 from __future__ import annotations
 
 import json
+import os
+import subprocess
+import sys
+import threading
 from pathlib import Path
 
+import pytest
 from pytest import CaptureFixture
 
 from warden._scanners import SCANNERS, ZAP
@@ -170,6 +175,24 @@ def test_resolve_config_falls_back_to_defaults_when_the_file_cannot_be_read(
     assert all(scanner.key in resolved.enabled_tools for scanner in SCANNERS)
 
 
+@pytest.mark.skipif(not hasattr(os, "mkfifo"), reason="needs named pipes")
+def test_a_config_passed_explicitly_may_be_a_pipe(tmp_path: Path) -> None:
+    """Only the project's own `.warden.yaml` must be a regular file; a named pipe passed with
+    `--config` is still read. (A pipe on `/dev/stdin` never was: it resolves to a path that does
+    not exist.)"""
+    fifo = tmp_path / "config.fifo"
+    os.mkfifo(fifo)
+    writer = threading.Thread(
+        target=lambda: fifo.write_text("tools:\n  trivy: false\n", encoding="utf-8"), daemon=True
+    )
+    writer.start()
+
+    resolved = resolve_config(project_root=tmp_path, cli_url="", config_path=fifo)
+
+    writer.join(timeout=10)
+    assert "trivy" not in resolved.enabled_tools
+
+
 def test_config_main_reports_every_scanner_as_enabled_by_default(
     tmp_path: Path,
     capsys: CaptureFixture[str],
@@ -233,3 +256,31 @@ def test_config_main_reads_a_config_file_outside_the_project_root(
 
     assert exit_code == 0
     assert json.loads(capsys.readouterr().out)["url"] == "http://from-elsewhere"
+
+
+@pytest.mark.skipif(not hasattr(os, "mkfifo"), reason="needs named pipes")
+def test_a_config_that_is_not_a_regular_file_is_treated_as_absent_without_being_read(
+    tmp_path: Path,
+) -> None:
+    """A project can ship `.warden.yaml` as a named pipe, and reading one blocks forever.
+
+    Run in a subprocess so that a regression fails on the timeout instead of hanging the suite.
+    """
+    os.mkfifo(tmp_path / ".warden.yaml")
+
+    completed = subprocess.run(
+        [
+            sys.executable,
+            "-c",
+            "from warden.config import main; raise SystemExit(main())",
+            str(tmp_path),
+        ],
+        capture_output=True,
+        check=False,
+        env={**os.environ, "PYTHONPATH": str(Path(__file__).parents[1] / "src")},
+        text=True,
+        timeout=30,
+    )
+
+    assert completed.returncode == 0
+    assert json.loads(completed.stdout)["exclude_dirs"] == []

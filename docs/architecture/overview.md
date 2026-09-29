@@ -57,12 +57,15 @@ Those parts moved to separate modules when they began changing independently.
 ## Data flow through a scan
 
 1. **Resolve configuration.** `config.resolve_config` reads `.warden.yaml` if
-   present and merges it with CLI arguments. A missing or unparsable file yields
-   defaults.
+   present and merges it with CLI arguments. A missing or
+   unparsable file yields defaults, and so does a `.warden.yaml` in the project
+   that is not a regular file (a named pipe, say).
 2. **Prepare the report directory.** `.security_reports/` is created in the
    project root, and appended to `.gitignore` if that file exists and does not
    already list it. Any report left by a previous run is deleted, so a tool that
-   is now disabled or that crashes cannot contribute stale findings.
+   is now disabled or that crashes cannot contribute stale findings. A symlink
+   (or, for the report, a named pipe) at any of these paths is replaced or left
+   alone, never followed, because the project being scanned is not trusted.
 3. **Run each enabled tool.** Each writes its native JSON into the report
    directory. Gitleaks has no flag for skipping paths, so `tooling` then drops
    the findings under `exclude_dirs` from its report. A tool that is missing or
