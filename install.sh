@@ -12,7 +12,7 @@ UV_BIN_DIR="$HOME/.local/bin"
 
 # What gets downloaded is pinned, and the scanner archives are checked against the SHA-256 of the
 # release. Keep these in step with the Dockerfile, which pins the same versions.
-UV_VERSION="0.12.18"
+UV_VERSION="0.12.20"
 UV_MIN_VERSION="0.9.17" # the first uv that reads a duration such as "7 days" for --exclude-newer
 TRIVY_VERSION="0.74.0"
 GITLEAKS_VERSION="8.30.1"
