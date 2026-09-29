@@ -68,6 +68,7 @@ class CliOptions:
     project_root: Path
     cli_url: str
     config_path: Path | None = None
+    timeout: float | None = None
 
 
 @dataclass(slots=True, frozen=True)
@@ -89,3 +90,4 @@ class ToolRunResult:
 class CommandResult:
     returncode: int | None
     warning: str | None = None
+    timed_out: bool = False

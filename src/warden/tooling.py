@@ -23,6 +23,7 @@ class CommandRunner(Protocol):
         cwd: Path,
         stderr_to_devnull: bool = False,
         env_overrides: dict[str, str] | None = None,
+        timeout: float | None = None,
     ) -> CommandResult: ...
 
 
@@ -95,12 +96,26 @@ def clear_output_file(path: Path) -> None:
         path.unlink()
 
 
+_STOP_GRACE_SECONDS = 10
+
+
+def _stop(process: subprocess.Popen[bytes]) -> None:
+    """Ask it to stop, so `docker run` can pass the signal on to its container, then insist."""
+    process.terminate()
+    try:
+        process.wait(timeout=_STOP_GRACE_SECONDS)
+    except subprocess.TimeoutExpired:
+        process.kill()
+        process.wait()
+
+
 def run_subprocess(
     args: list[str],
     *,
     cwd: Path,
     stderr_to_devnull: bool = False,
     env_overrides: dict[str, str] | None = None,
+    timeout: float | None = None,
 ) -> CommandResult:
     """The production `CommandRunner`: hand the command line to the operating system."""
     environment = os.environ.copy()
@@ -108,13 +123,24 @@ def run_subprocess(
         environment.update(env_overrides)
 
     try:
-        completed = subprocess.run(  # noqa: S603 - a list of arguments, never a shell string
+        with subprocess.Popen(  # noqa: S603 - a list of arguments, never a shell string
             args,
             cwd=str(cwd),
             env=environment,
-            check=False,
             stderr=subprocess.DEVNULL if stderr_to_devnull else None,
-        )
+        ) as process:
+            try:
+                returncode = process.wait(timeout=timeout)
+            except subprocess.TimeoutExpired:
+                _stop(process)
+                return CommandResult(
+                    returncode=None,
+                    warning=f"{args[0]} timed out after {timeout:g} seconds and was stopped.",
+                    timed_out=True,
+                )
+            except BaseException:
+                process.kill()
+                raise
     except FileNotFoundError:
         return CommandResult(returncode=None, warning=f"{args[0]} was not found on PATH.")
     except OSError as error:
@@ -127,7 +153,7 @@ def run_subprocess(
         # An argument the operating system cannot take, such as a NUL byte from `.warden.yaml`.
         return CommandResult(returncode=None, warning=f"{args[0]} could not be started: {error}")
 
-    return CommandResult(returncode=completed.returncode)
+    return CommandResult(returncode=returncode)
 
 
 def _excluded_prefixes(exclude_dirs: Sequence[str]) -> frozenset[str]:
@@ -202,7 +228,13 @@ def scan_request(
     )
 
 
-def run_scanner(scanner: Scanner, request: ScanRequest, runner: CommandRunner) -> ToolRunResult:
+def run_scanner(
+    scanner: Scanner,
+    request: ScanRequest,
+    runner: CommandRunner,
+    *,
+    timeout: float | None = None,
+) -> ToolRunResult:
     """Build this scanner's command line, run it, and normalise what came back."""
     command = scanner.build_command(request)
     result = runner(
@@ -210,7 +242,11 @@ def run_scanner(scanner: Scanner, request: ScanRequest, runner: CommandRunner) -
         cwd=command.cwd,
         stderr_to_devnull=command.stderr_to_devnull,
         env_overrides=command.env_overrides,
+        timeout=timeout,
     )
+    if result.timed_out:
+        # Whatever a stopped scanner left behind is not a finished report.
+        request.report_path.unlink(missing_ok=True)
     _prettify_json(
         request.report_path, path_key=scanner.path_key, exclude_dirs=request.exclude_dirs
     )

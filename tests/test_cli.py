@@ -255,3 +255,41 @@ def test_the_cli_prints_what_the_config_warned_about(
     assert exit_code == 0
     assert "Warning: target_url in .warden.yaml is ignored" in output
     assert not [command for command in runner.commands if "zap-full-scan.py" in command.args]
+
+
+def test_the_timeout_reaches_every_scanner_and_defaults_to_none(tmp_path: Path) -> None:
+    limited = RecordingRunner(report_text="{}")
+    unlimited = RecordingRunner(report_text="{}")
+    url = ["--url", "http://example.com"]
+
+    cli.main(["--project-root", str(tmp_path), *url, "--timeout", "90"], runner=limited)
+    cli.main(["--project-root", str(tmp_path), *url], runner=unlimited)
+
+    assert [command.timeout for command in limited.commands] == [90.0] * len(SCANNERS)
+    assert [command.timeout for command in unlimited.commands] == [None] * len(SCANNERS)
+
+
+@pytest.mark.parametrize("value", ["0", "-5", "nan", "soon"])
+def test_a_timeout_that_is_not_a_positive_number_is_a_usage_error(
+    tmp_path: Path, capsys: CaptureFixture[str], value: str
+) -> None:
+    with pytest.raises(SystemExit) as exit_info:
+        cli.main(["--project-root", str(tmp_path), "--timeout", value], runner=RecordingRunner())
+
+    assert exit_info.value.code == 2
+    assert "--timeout" in capsys.readouterr().err
+
+
+def test_a_scanner_that_timed_out_is_reported_as_a_warning_not_as_done(
+    tmp_path: Path, capsys: CaptureFixture[str]
+) -> None:
+    runner = RecordingRunner(
+        returncode=None, timed_out=True, warning="trivy timed out after 5 seconds and was stopped."
+    )
+
+    exit_code = cli.main(["--project-root", str(tmp_path), "--timeout", "5"], runner=runner)
+
+    output = capsys.readouterr().out
+    assert exit_code == 0
+    assert "   -> Warning: trivy timed out after 5 seconds and was stopped." in output
+    assert "Done." not in output

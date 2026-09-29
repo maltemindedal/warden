@@ -29,7 +29,17 @@ def _parse_args(argv: list[str] | None = None) -> CliOptions:
         help="Project root to scan (defaults to the current working directory)",
     )
     parser.add_argument("--config", default=None, help=f"Optional path to {config.CONFIG_FILENAME}")
+    parser.add_argument(
+        "--timeout",
+        type=float,
+        default=None,
+        metavar="SECONDS",
+        help="Stop any single scanner that runs longer than this (default: no limit)",
+    )
     namespace = parser.parse_args(argv)
+    timeout = cast(float | None, namespace.timeout)
+    if timeout is not None and not timeout > 0:  # also rejects nan
+        parser.error("--timeout must be a number of seconds greater than 0")
     project_root = Path(cast(str, namespace.project_root)).resolve()
     if not project_root.is_dir():
         parser.error(f"--project-root {project_root} is not an existing directory")
@@ -38,6 +48,7 @@ def _parse_args(argv: list[str] | None = None) -> CliOptions:
         project_root=project_root,
         cli_url=cast(str, namespace.url),
         config_path=Path(config_path_value).resolve() if config_path_value is not None else None,
+        timeout=timeout,
     )
 
 
@@ -54,6 +65,9 @@ def _fail(message: str) -> int:
 
 
 def _print_result(result: ToolRunResult) -> None:
+    if result.returncode is None and result.warning is not None:
+        print(f"   -> Warning: {result.warning}")
+        return
     if tooling.tool_succeeded(result) or tooling.report_written(result):
         print("   -> Done.")
         return
@@ -88,6 +102,7 @@ def _run_enabled_tools(
     report_dir: Path,
     resolved: ResolvedConfig,
     runner: tooling.CommandRunner,
+    timeout: float | None,
 ) -> None:
     total = len(SCANNERS)
 
@@ -110,7 +125,7 @@ def _run_enabled_tools(
             exclude_dirs=resolved.exclude_dirs,
             url=resolved.url,
         )
-        _print_result(tooling.run_scanner(scanner, request, runner))
+        _print_result(tooling.run_scanner(scanner, request, runner, timeout=timeout))
 
 
 def run_audit(options: CliOptions, *, runner: tooling.CommandRunner) -> int:
@@ -139,7 +154,7 @@ def run_audit(options: CliOptions, *, runner: tooling.CommandRunner) -> int:
             print(f"Warning: the DAST URL {shown_url} is not usable ({problem}): skipping ZAP.")
             resolved = replace(resolved, url="")
 
-    _run_enabled_tools(options.project_root, report_dir, resolved, runner)
+    _run_enabled_tools(options.project_root, report_dir, resolved, runner, options.timeout)
 
     print("\n[*] Generating Final Report...")
     try:

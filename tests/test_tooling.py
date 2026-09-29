@@ -42,6 +42,7 @@ def _run(
     *,
     exclude_dirs: Sequence[str] = (),
     url: str = "",
+    timeout: float | None = None,
 ) -> ToolRunResult:
     request = tooling.scan_request(
         scanner,
@@ -50,7 +51,7 @@ def _run(
         exclude_dirs=exclude_dirs,
         url=url,
     )
-    return tooling.run_scanner(scanner, request, runner)
+    return tooling.run_scanner(scanner, request, runner, timeout=timeout)
 
 
 def test_trivy_builds_its_command_line(tmp_path: Path) -> None:
@@ -475,6 +476,51 @@ def test_an_argument_the_system_cannot_take_warns_instead_of_aborting_the_audit(
     assert result.returncode is None
     assert result.warning is not None
     assert result.warning.startswith(f"{sys.executable} could not be started")
+
+
+SLEEP_FOR_A_MINUTE = [sys.executable, "-c", "import time; time.sleep(60)"]
+
+
+def test_a_scanner_that_outlives_its_timeout_is_stopped_with_a_warning(tmp_path: Path) -> None:
+    started = time.perf_counter()
+
+    result = tooling.run_subprocess(SLEEP_FOR_A_MINUTE, cwd=tmp_path, timeout=0.5)
+
+    assert time.perf_counter() - started < 30
+    assert result.returncode is None
+    assert result.timed_out
+    assert result.warning == f"{sys.executable} timed out after 0.5 seconds and was stopped."
+
+
+def test_a_scanner_that_finishes_inside_its_timeout_is_untouched(tmp_path: Path) -> None:
+    result = tooling.run_subprocess(
+        [sys.executable, "-c", "raise SystemExit(3)"], cwd=tmp_path, timeout=60
+    )
+
+    assert (result.returncode, result.warning, result.timed_out) == (3, None, False)
+
+
+def test_a_scanner_that_ignores_the_request_to_stop_is_killed(
+    tmp_path: Path, monkeypatch: MonkeyPatch
+) -> None:
+    """`docker run` passes SIGTERM on, but a scanner that traps it must not hold the build."""
+    monkeypatch.setattr(tooling, "_STOP_GRACE_SECONDS", 0.5)
+    stubborn = "import signal, time; signal.signal(signal.SIGTERM, signal.SIG_IGN); time.sleep(60)"
+    started = time.perf_counter()
+
+    result = tooling.run_subprocess([sys.executable, "-c", stubborn], cwd=tmp_path, timeout=0.5)
+
+    assert result.timed_out
+    assert time.perf_counter() - started < 30
+
+
+def test_what_a_timed_out_scanner_left_behind_is_not_kept_as_its_report(tmp_path: Path) -> None:
+    runner = RecordingRunner(returncode=None, timed_out=True, report_text='{"Results": []}')
+
+    result = _run(TRIVY, tmp_path, runner, timeout=5)
+
+    assert runner.commands[0].timeout == 5
+    assert not result.report_path.exists()
 
 
 def test_a_scanner_that_is_missing_warns_instead_of_raising(tmp_path: Path) -> None:

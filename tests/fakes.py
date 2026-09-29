@@ -17,6 +17,7 @@ class RecordedCommand:
     cwd: Path
     stderr_to_devnull: bool
     env_overrides: dict[str, str] | None
+    timeout: float | None = None
 
 
 @dataclass(slots=True)
@@ -26,6 +27,7 @@ class RecordingRunner:
     returncode: int | None = 0
     warning: str | None = None
     report_text: str | None = None
+    timed_out: bool = False
     commands: list[RecordedCommand] = field(default_factory=list[RecordedCommand])
 
     def __call__(
@@ -35,17 +37,21 @@ class RecordingRunner:
         cwd: Path,
         stderr_to_devnull: bool = False,
         env_overrides: dict[str, str] | None = None,
+        timeout: float | None = None,
     ) -> CommandResult:
         command = RecordedCommand(
             args=list(args),
             cwd=cwd,
             stderr_to_devnull=stderr_to_devnull,
             env_overrides=env_overrides,
+            timeout=timeout,
         )
         self.commands.append(command)
         if self.report_text is not None:
             self._write_report(command, self.report_text)
-        return CommandResult(returncode=self.returncode, warning=self.warning)
+        return CommandResult(
+            returncode=self.returncode, warning=self.warning, timed_out=self.timed_out
+        )
 
     @staticmethod
     def _write_report(command: RecordedCommand, text: str) -> None:

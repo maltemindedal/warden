@@ -43,11 +43,14 @@ Output like this means a scanner did not run cleanly:
 then bases its verdict on whatever reports exist. A scan can print `PASS` while a
 scanner never ran.
 
-Three causes:
+Four causes:
 
 - **`... was not found on PATH.`** The binary is missing. Re-run the installer,
   or use the [Docker image](running-with-docker.md), which bundles all three
   static scanners.
+- **`... timed out after N seconds and was stopped.`** You passed `--timeout` and
+  that scanner was still running when it expired. Raise the limit, or exclude the
+  directories that make it slow (see below).
 - **`... could not be started: <reason>`** The binary is there but the
   operating system would not run it, for example `Permission denied` on a file
   that is not executable. The other scanners still run.

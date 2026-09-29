@@ -18,6 +18,7 @@ exits non-zero if any Critical or High finding is present.
 
 ```
 usage: warden [-h] [-u URL] [--project-root PROJECT_ROOT] [--config CONFIG]
+              [--timeout SECONDS]
 ```
 
 ### Options
@@ -27,6 +28,7 @@ usage: warden [-h] [-u URL] [--project-root PROJECT_ROOT] [--config CONFIG]
 | `-u`, `--url`, `-Url`, `--Url` | `""` | DAST target URL. Enables the ZAP stage. Overrides `target_url` from the config file, which is not used at all when `GITHUB_WORKSPACE` is set. |
 | `--project-root` | `.` | Directory to scan. Must be an existing directory. Resolved to an absolute path; the report is written here. |
 | `--config` | `<project-root>/.warden.yaml` | Path to an alternate config file. |
+| `--timeout` | none | Stop any single scanner that runs longer than this many seconds (a number greater than 0). See [Behaviour](#behaviour). |
 | `-h`, `--help` | Not applicable | Print usage and exit. |
 
 The `-Url` and `--Url` spellings exist so the same invocation works in
@@ -55,6 +57,13 @@ PowerShell habits and POSIX shells. All four spellings set the same value.
   real directory, a symlink or named pipe named `security_audit.json` is replaced
   by the report, and a `.gitignore` that is a symlink or not a regular file is left
   untouched.
+- **`--timeout` limits each scanner, not the run.** A scanner that is still going
+  after that many seconds is sent a stop signal (so `docker run` can pass it to the
+  ZAP container) and killed ten seconds later if it ignores it. Warden prints
+  `<tool> timed out after N seconds and was stopped.`, deletes whatever partial
+  report it left, and goes on to the next scanner. Like any scanner that fails to
+  run, that is a warning and not a failure; without the flag nothing is limited, and
+  a DAST scan can run for as long as ZAP takes.
 - Reports from a previous run are deleted before the scanners start. Only the
   files listed in [Report format](report-format.md#input-files) and `zap.html`
   are removed; anything else in the directory is left alone.
