@@ -59,7 +59,7 @@ PowerShell habits and POSIX shells. All four spellings set the same value.
 | Code | Meaning |
 | --- | --- |
 | `0` | No Critical or High findings. Printed as `PASS`. |
-| `1` | At least one Critical or High finding. Printed as `FAIL`. |
+| `1` | At least one Critical or High finding, printed as `FAIL`; or a path Warden owns cannot be used (`.security_reports` is a regular file, a report in it is a directory, `security_audit.json` is a directory), printed as `warden: error: ...` on stderr. |
 | `2` | Invalid arguments, including a `--project-root` that is not an existing directory. Nothing is scanned or written. |
 
 Medium, Low, Info, and Unknown findings never affect the exit code. The

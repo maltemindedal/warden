@@ -170,3 +170,41 @@ def test_a_project_root_that_is_a_file_is_a_usage_error(
 
     assert exit_info.value.code == 2
     assert "is not an existing directory" in capsys.readouterr().err
+
+
+def test_a_regular_file_where_the_report_directory_goes_is_a_clear_error_not_a_traceback(
+    tmp_path: Path, capsys: CaptureFixture[str]
+) -> None:
+    (tmp_path / ".security_reports").write_text("in the way", encoding="utf-8")
+    runner = RecordingRunner()
+
+    exit_code = cli.main(["--project-root", str(tmp_path)], runner=runner)
+
+    assert exit_code == 1
+    assert runner.commands == []
+    assert "warden: error: cannot prepare the report paths" in capsys.readouterr().err
+
+
+def test_a_directory_where_a_stale_report_goes_is_a_clear_error_not_a_traceback(
+    tmp_path: Path, capsys: CaptureFixture[str]
+) -> None:
+    (tmp_path / ".security_reports" / "trivy.json").mkdir(parents=True)
+
+    exit_code = cli.main(["--project-root", str(tmp_path)], runner=RecordingRunner())
+
+    assert exit_code == 1
+    assert "warden: error: cannot prepare the report paths" in capsys.readouterr().err
+
+
+def test_a_directory_where_the_report_goes_is_a_clear_error_after_the_scans_ran(
+    tmp_path: Path, capsys: CaptureFixture[str]
+) -> None:
+    (tmp_path / ".warden.yaml").write_text(DISABLE_EVERY_TOOL, encoding="utf-8")
+    (tmp_path / "security_audit.json").mkdir()
+
+    exit_code = cli.main(["--project-root", str(tmp_path)], runner=RecordingRunner())
+
+    assert exit_code == 1
+    assert "warden: error: cannot read the reports or write security_audit.json" in (
+        capsys.readouterr().err
+    )

@@ -123,6 +123,9 @@ def run_subprocess(
         return CommandResult(
             returncode=None, warning=f"{args[0]} could not be started: {error.strerror or error}"
         )
+    except ValueError as error:
+        # An argument the operating system cannot take, such as a NUL byte from `.warden.yaml`.
+        return CommandResult(returncode=None, warning=f"{args[0]} could not be started: {error}")
 
     return CommandResult(returncode=completed.returncode)
 

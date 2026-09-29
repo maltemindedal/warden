@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import argparse
+import sys
 from pathlib import Path
 from typing import cast
 
@@ -36,6 +37,18 @@ def _parse_args(argv: list[str] | None = None) -> CliOptions:
         cli_url=cast(str, namespace.url),
         config_path=Path(config_path_value).resolve() if config_path_value is not None else None,
     )
+
+
+def _describe(error: OSError) -> str:
+    return (
+        f"{error.filename}: {error.strerror}" if error.filename and error.strerror else str(error)
+    )
+
+
+def _fail(message: str) -> int:
+    """A path the project controls that Warden cannot use: a failed run, not a traceback."""
+    print(f"warden: error: {message}", file=sys.stderr)
+    return 1
 
 
 def _print_result(result: ToolRunResult) -> None:
@@ -104,9 +117,12 @@ def run_audit(options: CliOptions, *, runner: tooling.CommandRunner) -> int:
         cli_url=options.cli_url,
         config_path=options.config_path,
     )
-    report_dir = tooling.prepare_report_dir(options.project_root)
     output_file = options.project_root / "security_audit.json"
-    tooling.clear_output_file(output_file)
+    try:
+        report_dir = tooling.prepare_report_dir(options.project_root)
+        tooling.clear_output_file(output_file)
+    except OSError as error:
+        return _fail(f"cannot prepare the report paths: {_describe(error)}")
 
     print("STARTING SECURITY AUDIT")
     print(f"   Target: {options.project_root}")
@@ -116,7 +132,10 @@ def run_audit(options: CliOptions, *, runner: tooling.CommandRunner) -> int:
     _run_enabled_tools(options.project_root, report_dir, resolved, runner)
 
     print("\n[*] Generating Final Report...")
-    verdict = aggregate.generate_report(report_dir=report_dir, output_file=output_file)
+    try:
+        verdict = aggregate.generate_report(report_dir=report_dir, output_file=output_file)
+    except OSError as error:
+        return _fail(f"cannot read the reports or write {output_file.name}: {_describe(error)}")
     if verdict.failed:
         print("\nAUDIT FAILED!")
         print(f"Report saved to: {output_file}")

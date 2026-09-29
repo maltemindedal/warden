@@ -463,6 +463,17 @@ def test_a_working_directory_that_is_a_file_warns_instead_of_aborting_the_audit(
     assert result.warning.startswith(f"{sys.executable} could not be started")
 
 
+def test_an_argument_the_system_cannot_take_warns_instead_of_aborting_the_audit(
+    tmp_path: Path,
+) -> None:
+    """`.warden.yaml` values reach a scanner's command line, and a NUL byte cannot be passed."""
+    result = tooling.run_subprocess([sys.executable, "-c", "pass", "a\x00b"], cwd=tmp_path)
+
+    assert result.returncode is None
+    assert result.warning is not None
+    assert result.warning.startswith(f"{sys.executable} could not be started")
+
+
 def test_a_scanner_that_is_missing_warns_instead_of_raising(tmp_path: Path) -> None:
     runner = RecordingRunner(returncode=None, warning="trivy was not found on PATH.")
 
