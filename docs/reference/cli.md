@@ -126,11 +126,12 @@ usage: warden-aggregate [-h] report_dir output_file
 
 | Argument | Effect |
 | --- | --- |
-| `report_dir` | Directory holding `trivy.json`, `semgrep.json`, `gitleaks.json`, and/or `zap.json`. Missing files are skipped. |
+| `report_dir` | Directory holding `trivy.json`, `semgrep.json`, `gitleaks.json`, and/or `zap.json`. It must exist; missing files in it are skipped. |
 | `output_file` | Path to write the aggregated report. Parent directories are created. |
 
 Exit codes match `warden`: `1` if any Critical or High finding is present,
-otherwise `0`.
+otherwise `0`, and `2` for invalid arguments, including a `report_dir` that is not
+an existing directory (nothing is written).
 
 ### Example
 

@@ -229,3 +229,17 @@ def test_aggregate_main_exits_zero_when_no_reports_are_present(tmp_path: Path) -
     exit_code = main([str(tmp_path), str(tmp_path / "security_audit.json")])
 
     assert exit_code == 0
+
+
+def test_a_report_dir_that_does_not_exist_is_a_usage_error_not_a_pass(
+    tmp_path: Path, capsys: CaptureFixture[str]
+) -> None:
+    """A mistyped path used to print `PASS`, exit 0, and write an empty report."""
+    output_file = tmp_path / "security_audit.json"
+
+    with pytest.raises(SystemExit) as exit_info:
+        main([str(tmp_path / "typo"), str(output_file)])
+
+    assert exit_info.value.code == 2
+    assert not output_file.exists()
+    assert "is not an existing directory" in capsys.readouterr().err
