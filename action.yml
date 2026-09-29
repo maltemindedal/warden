@@ -5,6 +5,9 @@ inputs:
   url:
     description: "Optional DAST target URL"
     required: false
+  config:
+    description: "Path to a .warden.yaml OUTSIDE the checkout, used instead of the one in the repository (for pull request gates)"
+    required: false
   strict:
     description: "Fail (exit 3) when a scanner that ran left no usable report, or none ran"
     default: "false"
@@ -27,11 +30,33 @@ runs:
       env:
         INPUT_URL: ${{ inputs.url }}
         INPUT_STRICT: ${{ inputs.strict }}
+        INPUT_CONFIG: ${{ inputs.config }}
       run: |
         URL="$INPUT_URL"
         ARGS=()
         if [ -n "$URL" ]; then ARGS+=(--url "$URL"); fi
         if [ "$INPUT_STRICT" = "true" ]; then ARGS+=(--strict); fi
+
+        # A .warden.yaml inside the checkout is part of the change under review, so it cannot
+        # be trusted to say what to scan. A config from outside it is mounted read-only and
+        # used instead: the workspace's own file is not read at all.
+        CONFIG_MOUNT=()
+        if [ -n "$INPUT_CONFIG" ]; then
+          CONFIG_FILE="$(readlink -f -- "$INPUT_CONFIG")"
+          WORKSPACE_DIR="$(readlink -f -- "$GITHUB_WORKSPACE")"
+          if [ ! -f "$CONFIG_FILE" ]; then
+            echo "::error::The config input does not name a file: $INPUT_CONFIG"
+            exit 1
+          fi
+          case "$CONFIG_FILE" in
+            "$WORKSPACE_DIR"/*)
+              echo "::error::The config input must point outside the checked-out workspace, or the change under review controls it: $INPUT_CONFIG"
+              exit 1
+              ;;
+          esac
+          CONFIG_MOUNT=(-v "$CONFIG_FILE:/warden-config.yaml:ro")
+          ARGS+=(--config /warden-config.yaml)
+        fi
 
         # The image runs as a non-root user. Match the runner's uid/gid so the
         # report can be written back into the bind-mounted workspace, and grant the
@@ -45,6 +70,7 @@ runs:
           "${DOCKER_OPTS[@]}" \
           -v "${GITHUB_WORKSPACE}:/src" \
           -v /var/run/docker.sock:/var/run/docker.sock \
+          "${CONFIG_MOUNT[@]}" \
           -e GITHUB_WORKSPACE="${GITHUB_WORKSPACE}" \
           warden:action "${ARGS[@]}"
 

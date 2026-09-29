@@ -78,12 +78,48 @@ runner (it could come from a pull request, and it starts an active scan): the
 | Input | Default | Effect |
 | --- | --- | --- |
 | `url` | none | DAST target. Omit to skip ZAP. |
+| `config` | none | Path to a `.warden.yaml` **outside the checkout**, used instead of the repository's own. See [Gating pull requests](#gating-pull-requests). |
 | `strict` | `"false"` | Pass `--strict`: exit `3` when a scanner that ran left no usable report. |
 | `upload-artifact` | `"true"` | Whether to upload the reports as a build artifact. |
 | `artifact-name` | `"warden-report"` | Name of the uploaded artifact. |
 
 The action has no outputs. Consume the result via the step's exit status, or by
 downloading the artifact.
+
+### Gating pull requests
+
+**Warden trusts the files in the tree it scans to say what to scan.** That is right
+for a developer scanning their own project, and wrong for a gate on someone else's
+pull request: the change under review can switch the gate off. Any of these, added or
+edited in the pull request, can turn a failing scan green:
+
+- `.warden.yaml`: `tools: <name>: false`, and `exclude_dirs`;
+- the scanners' own files: `trivy.yaml`, `.trivyignore`, `.gitleaks.toml`,
+  `.gitleaksignore`, `.semgrepignore`;
+- inline suppressions (`gitleaks:allow`, `# nosemgrep`), and Semgrep's silent skip of
+  files over 1 MB.
+
+The `config` input covers the first. Point it at a file that does not come from the
+change, and the workspace's own `.warden.yaml` is not read at all (the action refuses a
+path inside the checkout, symlinks resolved, and one that is not a file):
+
+```yaml
+- name: Trusted Warden settings
+  run: |
+    cat > "$RUNNER_TEMP/warden.yaml" <<'EOF'
+    exclude_dirs:
+      - node_modules/
+    EOF
+- uses: maltemindedal/warden@<commit sha>
+  with:
+    config: ${{ runner.temp }}/warden.yaml
+    strict: true
+```
+
+It does not cover the scanners' own files or inline suppressions: Warden runs Trivy,
+Semgrep and Gitleaks over the checkout as they find it, so a reviewer of a pull request
+has to read changes to those files as changes to the gate. Pair it with `strict`, so a
+scanner that the change broke fails the run instead of passing it.
 
 ### What the action does
 

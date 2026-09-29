@@ -8,6 +8,11 @@ Warden is configured from three places, in increasing order of precedence:
 
 For task-oriented examples, see [Configuring scans](../guides/configuring-scans.md).
 
+> **The project's own `.warden.yaml` is trusted input.** It, and the scanners' own
+> files in the tree (`.trivyignore`, `.gitleaks.toml`, `.semgrepignore` and the
+> like), decide what is scanned. For a pull request gate, keep the settings outside
+> the change: see [Gating pull requests](../guides/ci-github-actions.md#gating-pull-requests).
+
 ## The config file format is a YAML subset
 
 `.warden.yaml` is **not** parsed by a YAML library. Warden uses a small
