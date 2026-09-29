@@ -3,6 +3,11 @@ Write-Host "Installing Warden..." -ForegroundColor Cyan
 
 $UvBinPath = Join-Path $HOME ".local\bin"
 
+# uv is installed at a pinned version. The minimum is the first uv that reads a duration such as
+# "7 days" for --exclude-newer. install.sh pins the same version.
+$UvVersion = "0.12.18"
+$UvMinVersion = [version]"0.9.17"
+
 if (!(Get-Command docker -ErrorAction SilentlyContinue)) {
     Write-Error "Missing requirement: Docker. Please install it first."
     exit 1
@@ -10,7 +15,7 @@ if (!(Get-Command docker -ErrorAction SilentlyContinue)) {
 
 if (!(Get-Command uv -ErrorAction SilentlyContinue)) {
     Write-Host "   -> Installing uv..."
-    & powershell -ExecutionPolicy Bypass -c "irm https://astral.sh/uv/install.ps1 | iex"
+    & powershell -ExecutionPolicy Bypass -c "irm https://astral.sh/uv/$UvVersion/install.ps1 | iex"
 }
 
 $env:Path = "$UvBinPath;$env:Path"
@@ -38,9 +43,20 @@ if (!(Get-Command gitleaks -ErrorAction SilentlyContinue)) {
     }
 }
 
+# `uv tool install` ignores this repository's uv.lock and its [tool.uv] settings, including the
+# seven-day cooldown on new releases, so the cooldown is passed explicitly. A uv that cannot read
+# it would silently install the newest of everything, so refuse instead.
+if ((& uv --version) -match '(\d+\.\d+\.\d+)') {
+    $UvInstalled = [version]$Matches[1]
+    if ($UvInstalled -lt $UvMinVersion) {
+        Write-Error "uv $UvInstalled is too old: this install needs uv $UvMinVersion or newer. Update it (https://docs.astral.sh/uv/getting-started/installation/) and run this script again."
+        exit 1
+    }
+}
+
 Write-Host "[*] Installing Warden with uv..."
 uv python install 3.11
-uv tool install --force --python 3.11 -e $PSScriptRoot
+uv tool install --force --python 3.11 --exclude-newer "7 days" -e $PSScriptRoot
 
 $CurrentPath = [Environment]::GetEnvironmentVariable("Path", "User")
 if ($CurrentPath -notlike "*$UvBinPath*") {
