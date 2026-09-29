@@ -18,7 +18,7 @@ exits non-zero if any Critical or High finding is present.
 
 ```
 usage: warden [-h] [-u URL] [--project-root PROJECT_ROOT] [--config CONFIG]
-              [--timeout SECONDS]
+              [--strict] [--timeout SECONDS]
 ```
 
 ### Options
@@ -28,6 +28,7 @@ usage: warden [-h] [-u URL] [--project-root PROJECT_ROOT] [--config CONFIG]
 | `-u`, `--url`, `-Url`, `--Url` | `""` | DAST target URL. Enables the ZAP stage. Overrides `target_url` from the config file, which is not used at all when `GITHUB_WORKSPACE` is set. |
 | `--project-root` | `.` | Directory to scan. Must be an existing directory. Resolved to an absolute path; the report is written here. |
 | `--config` | `<project-root>/.warden.yaml` | Path to an alternate config file. |
+| `--strict` | off | Fail the run (exit `3`) when a scanner that ran left no usable report, or when no scanner ran. See [Behaviour](#behaviour). |
 | `--timeout` | none | Stop any single scanner that runs longer than this many seconds (a number greater than 0). See [Behaviour](#behaviour). |
 | `-h`, `--help` | Not applicable | Print usage and exit. |
 
@@ -57,6 +58,20 @@ PowerShell habits and POSIX shells. All four spellings set the same value.
   real directory, a symlink or named pipe named `security_audit.json` is replaced
   by the report, and a `.gitignore` that is a symlink or not a regular file is left
   untouched.
+- **`--strict` makes a broken scan fail instead of pass.** By default a missing,
+  crashed or unparsable scanner is only a warning and the run can print `PASS`.
+  With `--strict`, a scanner that was started (or a DAST URL that was refused) and
+  did not leave a report of the right shape (a JSON object for Trivy, Semgrep and
+  ZAP, an array for Gitleaks) is named after the summary as
+  `STRICT: <tools> did not produce a usable report, so the scan is incomplete.`, and
+  the run exits `3`. The exit status of the scanner is not what counts, because ZAP
+  exits non-zero when it has alerts and still writes its report; a clean scan is
+  still a report. A run in which every scanner is disabled or skipped fails the same
+  way (`STRICT: no scanner ran`). Findings win: a Critical or High finding is still
+  exit `1`, and the `STRICT:` line is printed as well. Scanners you turned off in
+  `.warden.yaml` are not held against the run. It is a flag and not a config key on
+  purpose: an older Warden rejects an unknown flag, where it would ignore an unknown
+  key and quietly run without the check.
 - **`--timeout` limits each scanner, not the run.** A scanner that is still going
   after that many seconds is sent a stop signal (so `docker run` can pass it to the
   ZAP container) and killed ten seconds later if it ignores it. Warden prints
@@ -75,14 +90,16 @@ PowerShell habits and POSIX shells. All four spellings set the same value.
 | `0` | No Critical or High findings. Printed as `PASS`. |
 | `1` | At least one Critical or High finding, printed as `FAIL`; or a path Warden owns cannot be used (`.security_reports` is a regular file, a report in it is a directory, `security_audit.json` is a directory), printed as `warden: error: ...` on stderr. |
 | `2` | Invalid arguments, including a `--project-root` that is not an existing directory. Nothing is scanned or written. |
+| `3` | Only with `--strict`: no finding failed the build, but a scanner that ran left no usable report, or no scanner ran. The report is still written. |
 
 Medium, Low, Info, and Unknown findings never affect the exit code. The
 threshold is fixed at Critical and High and is not currently configurable from
 the CLI or the config file.
 
-A scanner that fails to run does **not** by itself cause a non-zero exit. The
-failure is printed as a warning and the run continues with whatever reports were
-produced. A scan can therefore report `PASS` while a tool was unavailable.
+Unless you pass `--strict`, a scanner that fails to run does **not** by itself
+cause a non-zero exit. The failure is printed as a warning and the run continues
+with whatever reports were produced. A scan can therefore report `PASS` while a
+tool was unavailable.
 See [Troubleshooting](../guides/troubleshooting.md#a-tool-was-skipped-or-warned-but-the-scan-still-passed).
 
 ### Per-tool exit-code handling

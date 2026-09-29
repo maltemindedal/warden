@@ -57,7 +57,10 @@ Four causes:
 - **`... exited with status N.`** The tool ran and failed. Its stderr is
   suppressed for Semgrep and Gitleaks, so run the tool directly to see why.
 
-To confirm which tools actually contributed, check `tools_run`:
+To make this a failure instead of a warning, run `warden --strict`: it exits `3`
+when a scanner that ran left no usable report (see the
+[CLI reference](../reference/cli.md#behaviour)). To confirm which tools actually
+contributed, check `tools_run`:
 
 ```bash
 python -c "import json;print(json.load(open('security_audit.json'))['summary']['tools_run'])"

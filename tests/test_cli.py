@@ -293,3 +293,129 @@ def test_a_scanner_that_timed_out_is_reported_as_a_warning_not_as_done(
     assert exit_code == 0
     assert "   -> Warning: trivy timed out after 5 seconds and was stopped." in output
     assert "Done." not in output
+
+
+USABLE_REPORTS = {"trivy.json": "{}", "semgrep.json": '{"results": []}', "gitleaks.json": "[]"}
+
+
+def _strict(tmp_path: Path, runner: RecordingRunner, *extra: str) -> int:
+    return cli.main(["--project-root", str(tmp_path), "--strict", *extra], runner=runner)
+
+
+def test_strict_passes_when_every_scanner_that_ran_left_a_usable_report(
+    tmp_path: Path, capsys: CaptureFixture[str]
+) -> None:
+    """A clean Trivy report is an object with no `Results`, and a clean Gitleaks one is `[]`."""
+    exit_code = _strict(tmp_path, RecordingRunner(report_texts=USABLE_REPORTS))
+
+    output = capsys.readouterr().out
+    assert exit_code == 0
+    assert "STRICT" not in output
+    assert "AUDIT COMPLETE!" in output
+
+
+def test_strict_is_exit_3_when_a_scanner_is_missing_where_the_default_passes(
+    tmp_path: Path, capsys: CaptureFixture[str]
+) -> None:
+    runner = RecordingRunner(returncode=None, warning="trivy was not found on PATH.")
+
+    default_exit = cli.main(["--project-root", str(tmp_path)], runner=runner)
+    strict_exit = _strict(tmp_path, runner)
+
+    output = capsys.readouterr().out
+    assert (default_exit, strict_exit) == (0, cli.EXIT_INCOMPLETE)
+    assert "STRICT: Trivy, Semgrep, Gitleaks did not produce a usable report" in output
+    assert "AUDIT INCOMPLETE!" in output
+
+
+def test_strict_is_exit_3_when_scanners_exited_without_writing_a_report(
+    tmp_path: Path, capsys: CaptureFixture[str]
+) -> None:
+    exit_code = _strict(tmp_path, RecordingRunner(returncode=2))
+
+    assert exit_code == cli.EXIT_INCOMPLETE
+    assert "STRICT: Trivy, Semgrep, Gitleaks did not produce a usable report" in (
+        capsys.readouterr().out
+    )
+
+
+def test_strict_is_exit_3_when_a_report_is_there_but_is_not_json(
+    tmp_path: Path, capsys: CaptureFixture[str]
+) -> None:
+    runner = RecordingRunner(report_texts={**USABLE_REPORTS, "semgrep.json": ""})
+
+    exit_code = _strict(tmp_path, runner)
+
+    assert exit_code == cli.EXIT_INCOMPLETE
+    assert "STRICT: Semgrep did not produce a usable report" in capsys.readouterr().out
+
+
+@pytest.mark.parametrize(
+    ("report", "wrong"),
+    [("{}", "Gitleaks"), ("null", "Gitleaks"), ("not json", "Gitleaks")],
+)
+def test_strict_needs_the_shape_each_scanner_writes(
+    tmp_path: Path, capsys: CaptureFixture[str], report: str, wrong: str
+) -> None:
+    runner = RecordingRunner(report_texts={**USABLE_REPORTS, "gitleaks.json": report})
+
+    exit_code = _strict(tmp_path, runner)
+
+    assert exit_code == cli.EXIT_INCOMPLETE
+    assert f"STRICT: {wrong} did not produce a usable report" in capsys.readouterr().out
+
+
+def test_strict_counts_a_report_whose_scanner_exited_non_zero_because_it_had_alerts(
+    tmp_path: Path,
+) -> None:
+    """ZAP exits 1 or 2 when it has alerts, and still writes its report."""
+    runner = RecordingRunner(returncode=2, report_texts={**USABLE_REPORTS, "zap.json": "{}"})
+
+    assert _strict(tmp_path, runner, "--url", "http://example.com") == 0
+
+
+def test_strict_is_exit_3_when_no_scanner_ran_at_all(
+    tmp_path: Path, capsys: CaptureFixture[str]
+) -> None:
+    (tmp_path / ".warden.yaml").write_text(DISABLE_EVERY_TOOL, encoding="utf-8")
+
+    exit_code = _strict(tmp_path, RecordingRunner())
+
+    assert exit_code == cli.EXIT_INCOMPLETE
+    assert "STRICT: no scanner ran" in capsys.readouterr().out
+
+
+def test_strict_leaves_a_failing_finding_as_exit_1_but_still_says_what_is_incomplete(
+    tmp_path: Path, capsys: CaptureFixture[str]
+) -> None:
+    gitleaks_report = (FIXTURE_DIR / "gitleaks.json").read_text(encoding="utf-8")
+    runner = RecordingRunner(report_texts={"gitleaks.json": gitleaks_report})
+
+    exit_code = _strict(tmp_path, runner)
+
+    output = capsys.readouterr().out
+    assert exit_code == 1
+    assert "STRICT: Trivy, Semgrep did not produce a usable report" in output
+    assert "AUDIT FAILED!" in output
+
+
+def test_strict_holds_an_unusable_dast_url_against_the_run(
+    tmp_path: Path, capsys: CaptureFixture[str]
+) -> None:
+    runner = RecordingRunner(report_texts=USABLE_REPORTS)
+
+    exit_code = _strict(tmp_path, runner, "--url", "localhost:3000")
+
+    assert exit_code == cli.EXIT_INCOMPLETE
+    assert "STRICT: ZAP did not produce a usable report" in capsys.readouterr().out
+
+
+def test_strict_holds_a_scanner_that_timed_out_against_the_run(tmp_path: Path) -> None:
+    runner = RecordingRunner(
+        returncode=None,
+        timed_out=True,
+        warning="trivy timed out after 5 seconds and was stopped.",
+        report_text="{}",
+    )
+
+    assert _strict(tmp_path, runner, "--timeout", "5") == cli.EXIT_INCOMPLETE

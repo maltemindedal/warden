@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import argparse
 import sys
-from dataclasses import replace
+from dataclasses import dataclass, replace
 from pathlib import Path
 from typing import cast
 
@@ -10,6 +10,9 @@ from . import aggregate, config, tooling
 from ._models import CliOptions, ResolvedConfig, ToolRunResult
 from ._scanners import SCANNERS, Scanner, rewrite_zap_target, url_problem
 from ._text import shown
+
+EXIT_INCOMPLETE = 3
+"""`--strict`: no finding failed the build, but a scanner that ran left no usable report."""
 
 
 def _parse_args(argv: list[str] | None = None) -> CliOptions:
@@ -30,6 +33,14 @@ def _parse_args(argv: list[str] | None = None) -> CliOptions:
     )
     parser.add_argument("--config", default=None, help=f"Optional path to {config.CONFIG_FILENAME}")
     parser.add_argument(
+        "--strict",
+        action="store_true",
+        help=(
+            "Exit 3 when a scanner that ran left no usable report, or no scanner ran, "
+            "instead of passing"
+        ),
+    )
+    parser.add_argument(
         "--timeout",
         type=float,
         default=None,
@@ -49,7 +60,18 @@ def _parse_args(argv: list[str] | None = None) -> CliOptions:
         cli_url=cast(str, namespace.url),
         config_path=Path(config_path_value).resolve() if config_path_value is not None else None,
         timeout=timeout,
+        strict=cast(bool, namespace.strict),
     )
+
+
+def _incomplete(tools: _ToolsRun, unusable_url: bool) -> str | None:
+    """What `--strict` holds against the run, or `None` if every scanner that was asked for ran."""
+    missing = [*tools.unusable, *(["ZAP"] if unusable_url else [])]
+    if missing:
+        return f"{', '.join(missing)} did not produce a usable report, so the scan is incomplete."
+    if not tools.attempted:
+        return "no scanner ran, so the scan is incomplete."
+    return None
 
 
 def _describe(error: OSError) -> str:
@@ -97,14 +119,24 @@ def _skip_reason(scanner: Scanner, *, enabled: bool, url: str) -> str | None:
     return None
 
 
+@dataclass(slots=True, frozen=True)
+class _ToolsRun:
+    """Which scanners were started, and which of those left no usable report."""
+
+    attempted: tuple[str, ...]
+    unusable: tuple[str, ...]
+
+
 def _run_enabled_tools(
     project_root: Path,
     report_dir: Path,
     resolved: ResolvedConfig,
     runner: tooling.CommandRunner,
     timeout: float | None,
-) -> None:
+) -> _ToolsRun:
     total = len(SCANNERS)
+    attempted: list[str] = []
+    unusable: list[str] = []
 
     print()
     for step, scanner in enumerate(SCANNERS, start=1):
@@ -125,7 +157,12 @@ def _run_enabled_tools(
             exclude_dirs=resolved.exclude_dirs,
             url=resolved.url,
         )
-        _print_result(tooling.run_scanner(scanner, request, runner, timeout=timeout))
+        result = tooling.run_scanner(scanner, request, runner, timeout=timeout)
+        _print_result(result)
+        attempted.append(scanner.label)
+        if not tooling.report_usable(scanner, result):
+            unusable.append(scanner.label)
+    return _ToolsRun(attempted=tuple(attempted), unusable=tuple(unusable))
 
 
 def run_audit(options: CliOptions, *, runner: tooling.CommandRunner) -> int:
@@ -145,6 +182,7 @@ def run_audit(options: CliOptions, *, runner: tooling.CommandRunner) -> int:
     print(f"   Target: {options.project_root}")
     for warning in resolved.warnings:
         print(f"Warning: {warning}")
+    unusable_url = False
     if resolved.url:
         problem = url_problem(resolved.url)
         if problem is None:
@@ -153,18 +191,26 @@ def run_audit(options: CliOptions, *, runner: tooling.CommandRunner) -> int:
             shown_url = shown(resolved.url)
             print(f"Warning: the DAST URL {shown_url} is not usable ({problem}): skipping ZAP.")
             resolved = replace(resolved, url="")
+            unusable_url = True
 
-    _run_enabled_tools(options.project_root, report_dir, resolved, runner, options.timeout)
+    tools = _run_enabled_tools(options.project_root, report_dir, resolved, runner, options.timeout)
 
     print("\n[*] Generating Final Report...")
     try:
         verdict = aggregate.generate_report(report_dir=report_dir, output_file=output_file)
     except OSError as error:
         return _fail(f"cannot read the reports or write {output_file.name}: {_describe(error)}")
+    incomplete = _incomplete(tools, unusable_url) if options.strict else None
+    if incomplete is not None:
+        print(f"\nSTRICT: {incomplete}")
     if verdict.failed:
         print("\nAUDIT FAILED!")
         print(f"Report saved to: {output_file}")
         return 1
+    if incomplete is not None:
+        print("\nAUDIT INCOMPLETE!")
+        print(f"Report saved to: {output_file}")
+        return EXIT_INCOMPLETE
 
     print("\nAUDIT COMPLETE!")
     print(f"Report saved to: {output_file}")

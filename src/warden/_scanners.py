@@ -205,6 +205,8 @@ class Scanner:
     """For a scanner with no flag to skip paths: the key holding each finding's file path.
 
     Its report is filtered against `exclude_dirs` after the scan."""
+    report_is_array: bool = False
+    """Whether the report is a JSON array (Gitleaks) rather than a JSON object."""
 
     def __post_init__(self) -> None:
         # `key` is derived rather than stored so the two cannot drift apart, which only
@@ -245,6 +247,7 @@ GITLEAKS: Final[Scanner] = Scanner(
     build_command=_build_gitleaks_command,
     accepted_returncodes=frozenset({0}),
     path_key="File",
+    report_is_array=True,
 )
 ZAP: Final[Scanner] = Scanner(
     label="ZAP",

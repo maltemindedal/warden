@@ -17,11 +17,12 @@ Warden exits `1` when any Critical or High finding is present. Medium and below
 are reported but do not fail the job. See
 [Exit codes](../reference/cli.md#exit-codes).
 
-**A scanner that fails to run does not fail the build.** Warden prints a warning
-and continues. Treat a
-green build as "no High or Critical findings *in the reports that were
-produced*", and check the log or `tools_run` in the report if you need
-certainty that every scanner ran.
+**By default a scanner that fails to run does not fail the build.** Warden prints
+a warning and continues. Treat a green build as "no High or Critical findings *in
+the reports that were produced*", and check the log or `tools_run` in the report
+if you need certainty that every scanner ran. To get that certainty from the gate
+itself, pass `--strict` (the action's `strict` input): the run then exits `3` when
+a scanner that ran left no usable report, or nothing ran.
 
 ## The workflow in this repository
 
@@ -77,6 +78,7 @@ runner (it could come from a pull request, and it starts an active scan): the
 | Input | Default | Effect |
 | --- | --- | --- |
 | `url` | none | DAST target. Omit to skip ZAP. |
+| `strict` | `"false"` | Pass `--strict`: exit `3` when a scanner that ran left no usable report. |
 | `upload-artifact` | `"true"` | Whether to upload the reports as a build artifact. |
 | `artifact-name` | `"warden-report"` | Name of the uploaded artifact. |
 

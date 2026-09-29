@@ -5,6 +5,9 @@ inputs:
   url:
     description: "Optional DAST target URL"
     required: false
+  strict:
+    description: "Fail (exit 3) when a scanner that ran left no usable report, or none ran"
+    default: "false"
   upload-artifact:
     description: "Upload reports"
     default: "true"
@@ -23,10 +26,12 @@ runs:
       shell: bash
       env:
         INPUT_URL: ${{ inputs.url }}
+        INPUT_STRICT: ${{ inputs.strict }}
       run: |
         URL="$INPUT_URL"
         ARGS=()
         if [ -n "$URL" ]; then ARGS+=(--url "$URL"); fi
+        if [ "$INPUT_STRICT" = "true" ]; then ARGS+=(--strict); fi
 
         # The image runs as a non-root user. Match the runner's uid/gid so the
         # report can be written back into the bind-mounted workspace, and grant the

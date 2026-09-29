@@ -27,6 +27,8 @@ class RecordingRunner:
     returncode: int | None = 0
     warning: str | None = None
     report_text: str | None = None
+    report_texts: dict[str, str] = field(default_factory=dict[str, str])
+    """What to write for a given report file name, instead of `report_text`."""
     timed_out: bool = False
     commands: list[RecordedCommand] = field(default_factory=list[RecordedCommand])
 
@@ -47,11 +49,16 @@ class RecordingRunner:
             timeout=timeout,
         )
         self.commands.append(command)
-        if self.report_text is not None:
-            self._write_report(command, self.report_text)
+        text = self.report_texts.get(self._report_name(command), self.report_text)
+        if text is not None:
+            self._write_report(command, text)
         return CommandResult(
             returncode=self.returncode, warning=self.warning, timed_out=self.timed_out
         )
+
+    @staticmethod
+    def _report_name(command: RecordedCommand) -> str:
+        return next((Path(arg).name for arg in command.args if arg.endswith(".json")), "")
 
     @staticmethod
     def _write_report(command: RecordedCommand, text: str) -> None:

@@ -8,7 +8,7 @@ from collections.abc import Sequence
 from pathlib import Path
 from typing import Protocol, cast
 
-from ._json import as_mapping, get_string
+from ._json import as_mapping, get_string, load_json
 from ._models import CommandResult, ToolRunResult
 from ._scanners import SCANNERS, Scanner, ScanRequest
 
@@ -33,6 +33,18 @@ def tool_succeeded(result: ToolRunResult) -> bool:
 
 def report_written(result: ToolRunResult) -> bool:
     return result.report_path.exists()
+
+
+def report_usable(scanner: Scanner, result: ToolRunResult) -> bool:
+    """Whether the scanner left a report of the shape its parser reads, so its run counts.
+
+    The exit status is not consulted: ZAP exits non-zero when it has alerts, and a clean Trivy
+    report is an object with no `Results` in it, so only the shape of the file says it ran.
+    """
+    loaded = load_json(result.report_path)
+    if loaded.error is not None:
+        return False
+    return isinstance(loaded.data, list if scanner.report_is_array else dict)
 
 
 def _clear_stale_reports(report_dir: Path) -> None:

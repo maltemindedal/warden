@@ -89,7 +89,10 @@ other process produced.
 A scanner that is missing or crashes does not abort the run or fail the build.
 This allows Warden to return results from the scanners that completed. It also
 means that a green build does not prove every scanner ran. `tools_run` records
-which report files Warden found.
+which report files Warden found. `--strict` opts into the opposite: after the
+verdict, `cli` holds against the run every scanner it started that left no report
+of the shape its parser reads (`tooling.report_usable`, from
+`Scanner.report_is_array`) and exits `3` unless a finding already made it `1`.
 
 Warden handles an unreadable report the same way. This can happen when a tool
 crashes while writing the file. `load_json` returns a `LoadedJson` containing

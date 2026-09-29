@@ -69,6 +69,7 @@ class CliOptions:
     cli_url: str
     config_path: Path | None = None
     timeout: float | None = None
+    strict: bool = False
 
 
 @dataclass(slots=True, frozen=True)
