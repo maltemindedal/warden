@@ -108,6 +108,8 @@ def _build_semgrep_command(request: ScanRequest) -> Command:
 
 
 def _build_gitleaks_command(request: ScanRequest) -> Command:
+    # `gitleaks detect` has no flag for skipping paths (it rejects `--exclude-path` as an unknown
+    # flag), so `exclude_dirs` is applied to its report afterwards. See `Scanner.path_key`.
     args = [
         "gitleaks",
         "detect",
@@ -119,9 +121,6 @@ def _build_gitleaks_command(request: ScanRequest) -> Command:
         "--exit-code",
         "0",
     ]
-    for exclude_dir in request.exclude_dirs:
-        if exclude_dir:
-            args.extend(["--exclude-path", exclude_dir])
     return Command(args=args, cwd=request.project_root, stderr_to_devnull=True)
 
 
@@ -160,6 +159,10 @@ class Scanner:
     requires_url: bool = False
     extra_artifacts: tuple[str, ...] = ()
     """Anything else this scanner drops in the report directory, cleared between runs."""
+    path_key: str | None = None
+    """For a scanner with no flag to skip paths: the key holding each finding's file path.
+
+    Its report is filtered against `exclude_dirs` after the scan."""
 
     def __post_init__(self) -> None:
         # `key` is derived rather than stored so the two cannot drift apart, which only
@@ -199,6 +202,7 @@ GITLEAKS: Final[Scanner] = Scanner(
     parser=parse_gitleaks,
     build_command=_build_gitleaks_command,
     accepted_returncodes=frozenset({0}),
+    path_key="File",
 )
 ZAP: Final[Scanner] = Scanner(
     label="ZAP",

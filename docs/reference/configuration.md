@@ -67,14 +67,20 @@ exclude_dirs:
   - "vendor/"
 ```
 
-Each value is passed to every static tool, but the tools interpret exclusions
+Each value is applied to every static tool, but the tools interpret exclusions
 differently:
 
-| Tool | Flag | Form |
+| Tool | Applied as | Form |
 | --- | --- | --- |
 | Trivy | `--skip-dirs` | All values joined with commas into one flag |
 | Semgrep | `--exclude` | One flag per value |
-| Gitleaks | `--exclude-path` | One flag per value |
+| Gitleaks | Findings dropped after the scan | One directory per value, relative to the project root |
+
+Gitleaks has no flag for skipping paths, so it scans everything and Warden then
+drops the findings under each listed directory from `gitleaks.json`. A value
+matches that directory and everything below it, from the project root only:
+`vendor` and `vendor/` exclude `vendor/lib.env` but not `sub/vendor/lib.env`, and
+a glob such as `**/vendor` matches nothing.
 
 Because the semantics differ per tool, a pattern that excludes cleanly in one
 scanner may not in another. ZAP scans a URL rather than the filesystem, so

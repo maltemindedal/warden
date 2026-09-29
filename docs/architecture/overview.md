@@ -34,7 +34,7 @@ All under `src/warden/`.
 | --- | --- |
 | `cli.py` | Entry point. Parses arguments, sequences the stages, prints progress, returns the exit code. |
 | `config.py` | Parses `.warden.yaml` and resolves it against CLI arguments into a `ResolvedConfig`. Also the `warden-config` entry point. |
-| `tooling.py` | Prepares the report directory and runs a scanner's command line through a `CommandRunner`. The only module that touches subprocesses. |
+| `tooling.py` | Prepares the report directory, runs a scanner's command line through a `CommandRunner`, and filters a report against `exclude_dirs` for a scanner that cannot skip paths. The only module that touches subprocesses. |
 | `aggregate.py` | Assembles the report from the parsed findings and writes it. Also the `warden-aggregate` entry point. |
 | `_parsers.py` | Turns each tool's JSON into `Finding` records and normalises severities. |
 | `_summary.py` | Creates a `Verdict` with counts, a category breakdown, and the build result, then prints its terminal table. |
@@ -64,8 +64,9 @@ Those parts moved to separate modules when they began changing independently.
    already list it. Any report left by a previous run is deleted, so a tool that
    is now disabled or that crashes cannot contribute stale findings.
 3. **Run each enabled tool.** Each writes its native JSON into the report
-   directory. A tool that is missing or fails produces a warning; the sequence
-   continues regardless.
+   directory. Gitleaks has no flag for skipping paths, so `tooling` then drops
+   the findings under `exclude_dirs` from its report. A tool that is missing or
+   fails produces a warning; the sequence continues regardless.
 4. **Aggregate.** Each report file that exists is parsed into a common `Finding`
    record and severities are normalised onto one scale.
 5. **Report and exit.** Findings are sorted by severity, written to
@@ -122,8 +123,9 @@ configuration.
 
 Everything Warden knows about a scanner is one `Scanner` record in
 `_scanners.py`. The record contains its display label, report filename, summary
-category, summary position, parser, command builder, accepted exit codes, and
-whether it needs a target URL. Warden derives the `.warden.yaml` key from the
+category, summary position, parser, command builder, accepted exit codes,
+whether it needs a target URL, and, for a scanner with no flag to skip paths,
+the report key that holds each finding's file path. Warden derives the `.warden.yaml` key from the
 label instead of storing both values. The constructor rejects a label that
 cannot be converted to a valid key.
 

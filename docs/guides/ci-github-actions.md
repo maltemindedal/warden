@@ -94,8 +94,9 @@ time before scanning starts.
 
 The uploaded artifact contains raw scanner output. Gitleaks findings are
 redacted before they reach `security_audit.json`, but `.security_reports/` holds
-each tool's unmodified report. Treat the artifact as sensitive and keep it
-private.
+each tool's raw report (`gitleaks.json` with the findings under `exclude_dirs`
+removed, and still holding the matched secrets). Treat the artifact as sensitive
+and keep it private.
 
 ## Other CI systems
 

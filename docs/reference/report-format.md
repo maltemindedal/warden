@@ -3,7 +3,8 @@
 A scan produces two kinds of output:
 
 - `.security_reports/` contains each scanner's raw JSON, unmodified except for
-  pretty-printing.
+  pretty-printing and, for `gitleaks.json`, the removal of findings under
+  `exclude_dirs`.
 - `security_audit.json` contains the merged report described here.
 
 ## Input files

@@ -1,9 +1,13 @@
 from __future__ import annotations
 
+import json
+import os
 import sys
+import time
 from collections.abc import Sequence
 from pathlib import Path
 
+import pytest
 from pytest import MonkeyPatch
 
 from fakes import RecordingRunner
@@ -132,17 +136,181 @@ def test_gitleaks_builds_its_command_line(tmp_path: Path) -> None:
     assert command.env_overrides is None
 
 
-def test_gitleaks_repeats_its_exclude_flag_per_directory(tmp_path: Path) -> None:
+def test_gitleaks_is_never_given_a_path_flag_because_it_has_none(tmp_path: Path) -> None:
+    """`gitleaks detect` rejects `--exclude-path` ("unknown flag", exit 126), which used to switch
+    secret scanning off for any project with `exclude_dirs` while the audit still passed."""
     runner = RecordingRunner()
 
     _run(GITLEAKS, tmp_path, runner, exclude_dirs=["build", "", "node_modules"])
 
-    assert runner.commands[0].args[-4:] == [
-        "--exclude-path",
-        "build",
-        "--exclude-path",
-        "node_modules",
+    args = runner.commands[0].args
+    assert "--exclude-path" not in args
+    assert not {"build", "node_modules"} & set(args)
+
+
+def _gitleaks_files_reported(tmp_path: Path, *, exclude_dirs: Sequence[str]) -> list[str]:
+    report = [
+        {"RuleID": "github-pat", "File": "src/app.env"},
+        {"RuleID": "github-pat", "File": "vendor/lib.env"},
+        {"RuleID": "github-pat", "File": "vendor/deep/lib.env"},
+        {"RuleID": "github-pat", "File": "vendor-old/x.env"},
+        {"RuleID": "github-pat", "File": "sub/vendor/x.env"},
+        {"RuleID": "github-pat", "File": "vendor"},
+        {"RuleID": "github-pat", "File": "/abs/app.env"},
+        {"RuleID": "github-pat", "File": ""},
+        {"RuleID": "github-pat"},
     ]
+    runner = RecordingRunner(report_text=json.dumps(report))
+
+    _run(GITLEAKS, tmp_path, runner, exclude_dirs=exclude_dirs)
+
+    kept = json.loads((tmp_path / "gitleaks.json").read_text(encoding="utf-8"))
+    return [entry.get("File", "<none>") for entry in kept]
+
+
+def test_gitleaks_findings_under_an_excluded_directory_are_dropped(tmp_path: Path) -> None:
+    assert _gitleaks_files_reported(tmp_path, exclude_dirs=["vendor/"]) == [
+        "src/app.env",
+        "vendor-old/x.env",
+        "sub/vendor/x.env",
+        "/abs/app.env",
+        "",
+        "<none>",
+    ]
+
+
+def test_a_finding_matching_any_one_of_several_entries_is_dropped(tmp_path: Path) -> None:
+    assert _gitleaks_files_reported(tmp_path, exclude_dirs=["build/", "vendor/", "sub"]) == [
+        "src/app.env",
+        "vendor-old/x.env",
+        "/abs/app.env",
+        "",
+        "<none>",
+    ]
+
+
+@pytest.mark.parametrize(
+    "entry",
+    [
+        "vendor",
+        "vendor/",
+        "./vendor",
+        " vendor ",
+        pytest.param(
+            "vendor\\",
+            marks=pytest.mark.skipif(
+                os.sep != "\\", reason="a backslash separates only on Windows"
+            ),
+        ),
+    ],
+)
+def test_an_excluded_directory_may_be_written_in_any_of_the_usual_forms(
+    tmp_path: Path, entry: str
+) -> None:
+    files = _gitleaks_files_reported(tmp_path, exclude_dirs=[entry])
+
+    assert "vendor/lib.env" not in files
+    assert "vendor/deep/lib.env" not in files
+    assert "vendor-old/x.env" in files
+
+
+@pytest.mark.parametrize("entry", ["", "/", ".", "./", "*", "**/vendor", "vend"])
+def test_an_entry_that_is_not_a_directory_below_the_root_excludes_nothing(
+    tmp_path: Path, entry: str
+) -> None:
+    """Dropping a finding is never the safe way to be wrong, so anything unclear keeps it."""
+    assert len(_gitleaks_files_reported(tmp_path, exclude_dirs=[entry])) == 9
+
+
+def test_a_backslash_separates_path_parts_only_where_the_platform_uses_it(tmp_path: Path) -> None:
+    """On POSIX `vendor\\lib.env` is one file name in the root, not a file under `vendor/`."""
+    runner = RecordingRunner(report_text=json.dumps([{"File": "vendor\\lib.env"}]))
+
+    _run(GITLEAKS, tmp_path, runner, exclude_dirs=["vendor"])
+
+    kept = json.loads((tmp_path / "gitleaks.json").read_text(encoding="utf-8"))
+    assert (kept == []) is (os.sep == "\\")
+
+
+def test_a_finding_that_is_not_an_object_with_a_path_is_kept(tmp_path: Path) -> None:
+    report = [1, None, "vendor/x", ["vendor/x"], {"File": 3}, {"File": None}]
+    runner = RecordingRunner(report_text=json.dumps(report))
+
+    _run(GITLEAKS, tmp_path, runner, exclude_dirs=["vendor"])
+
+    assert json.loads((tmp_path / "gitleaks.json").read_text(encoding="utf-8")) == report
+
+
+def test_filtering_does_not_slow_down_with_many_entries_and_findings(tmp_path: Path) -> None:
+    """A hostile `.warden.yaml` controls the entries and a hostile tree the findings."""
+    entries = [f"dir{index}/" for index in range(20_000)]
+    report = [{"File": f"other{index}/x.env"} for index in range(20_000)]
+    runner = RecordingRunner(report_text=json.dumps(report))
+
+    started = time.perf_counter()
+    _run(GITLEAKS, tmp_path, runner, exclude_dirs=entries)
+
+    assert time.perf_counter() - started < 5
+    kept = json.loads((tmp_path / "gitleaks.json").read_text(encoding="utf-8"))
+    assert len(kept) == 20_000
+
+
+def test_filtering_does_not_slow_down_with_deep_paths(tmp_path: Path) -> None:
+    """Only as many leading parts as the deepest entry has can match, however deep a path goes."""
+    report = [{"File": "a/" * 3_000 + "x.env"} for _ in range(2_000)]
+    runner = RecordingRunner(report_text=json.dumps(report))
+
+    started = time.perf_counter()
+    _run(GITLEAKS, tmp_path, runner, exclude_dirs=["vendor"])
+
+    assert time.perf_counter() - started < 4
+    kept = json.loads((tmp_path / "gitleaks.json").read_text(encoding="utf-8"))
+    assert len(kept) == 2_000
+
+
+def test_a_relative_entry_never_matches_an_absolute_path_and_an_absolute_one_no_relative_path(
+    tmp_path: Path,
+) -> None:
+    report = [{"File": "/vendor/x.env"}, {"File": "vendor/x.env"}]
+    runner = RecordingRunner(report_text=json.dumps(report))
+
+    _run(GITLEAKS, tmp_path, runner, exclude_dirs=["vendor"])
+    kept_by_relative_entry = json.loads((tmp_path / "gitleaks.json").read_text(encoding="utf-8"))
+    _run(GITLEAKS, tmp_path, runner, exclude_dirs=["/vendor"])
+    kept_by_absolute_entry = json.loads((tmp_path / "gitleaks.json").read_text(encoding="utf-8"))
+
+    assert kept_by_relative_entry == [{"File": "/vendor/x.env"}]
+    assert {"File": "vendor/x.env"} in kept_by_absolute_entry
+
+
+@pytest.mark.skipif(os.sep == "\\", reason="a backslash separates parts on Windows")
+def test_a_backslash_in_an_entry_is_part_of_its_name_on_posix(tmp_path: Path) -> None:
+    runner = RecordingRunner(report_text=json.dumps([{"File": "vendor/x.env"}]))
+
+    _run(GITLEAKS, tmp_path, runner, exclude_dirs=["vendor\\"])
+
+    kept = json.loads((tmp_path / "gitleaks.json").read_text(encoding="utf-8"))
+    assert kept == [{"File": "vendor/x.env"}]
+
+
+def test_only_a_scanner_that_cannot_skip_paths_has_its_report_filtered(tmp_path: Path) -> None:
+    runner = RecordingRunner(report_text='[{"File": "vendor/x"}]')
+
+    _run(TRIVY, tmp_path, runner, exclude_dirs=["vendor/"])
+
+    assert json.loads((tmp_path / "trivy.json").read_text(encoding="utf-8")) == [
+        {"File": "vendor/x"}
+    ]
+
+
+def test_a_gitleaks_report_that_is_not_a_list_is_left_as_it_is(tmp_path: Path) -> None:
+    runner = RecordingRunner(report_text='{"File": "vendor/x"}')
+
+    _run(GITLEAKS, tmp_path, runner, exclude_dirs=["vendor/"])
+
+    assert json.loads((tmp_path / "gitleaks.json").read_text(encoding="utf-8")) == {
+        "File": "vendor/x"
+    }
 
 
 def test_an_empty_exclude_list_omits_the_exclude_flag(tmp_path: Path) -> None:

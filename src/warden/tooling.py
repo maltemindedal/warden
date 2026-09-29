@@ -5,8 +5,9 @@ import os
 import subprocess
 from collections.abc import Sequence
 from pathlib import Path
-from typing import Protocol
+from typing import Protocol, cast
 
+from ._json import as_mapping, get_string
 from ._models import CommandResult, ToolRunResult
 from ._scanners import SCANNERS, Scanner, ScanRequest
 
@@ -89,13 +90,56 @@ def run_subprocess(
     return CommandResult(returncode=completed.returncode)
 
 
-def _prettify_json(path: Path) -> None:
+def _excluded_prefixes(exclude_dirs: Sequence[str]) -> frozenset[str]:
+    """Each entry as a directory below the project root; anything that is not one is dropped."""
+    prefixes = (
+        entry.strip().replace(os.sep, "/").removeprefix("./").rstrip("/") for entry in exclude_dirs
+    )
+    return frozenset(prefix for prefix in prefixes if prefix)
+
+
+def _without_excluded(raw_data: object, path_key: str, exclude_dirs: Sequence[str]) -> object:
+    """Drop the findings that sit at or under an excluded path, keep everything else.
+
+    An entry matches that path and everything below it, anchored at the project root, and is a
+    plain path rather than a glob. Finding paths are relative to it, as Gitleaks writes them, and
+    a backslash separates parts only where the platform uses one. A finding is checked against the
+    set of entries part by part, and only as far down as the deepest entry, so the cost grows with
+    neither the number of entries nor how deep a path goes. A finding
+    of an unexpected shape is kept: dropping one is never the safe way to be wrong.
+    """
+    prefixes = _excluded_prefixes(exclude_dirs)
+    if not prefixes or not isinstance(raw_data, list):
+        return raw_data
+    # No entry is deeper than this, so no longer prefix of a path can match one.
+    depth = max(prefix.count("/") for prefix in prefixes) + 1
+
+    def excluded(finding: object) -> bool:
+        mapping = as_mapping(finding)
+        file = get_string(mapping, path_key) if mapping is not None else None
+        if file is None:
+            return False
+        prefix: str | None = None
+        for part in file.replace(os.sep, "/").split("/", depth)[:depth]:
+            prefix = part if prefix is None else f"{prefix}/{part}"
+            if prefix in prefixes:
+                return True
+        return False
+
+    return [finding for finding in cast(list[object], raw_data) if not excluded(finding)]
+
+
+def _prettify_json(
+    path: Path, *, path_key: str | None = None, exclude_dirs: Sequence[str] = ()
+) -> None:
     if not path.exists():
         return
     try:
         raw_data: object = json.loads(path.read_text(encoding="utf-8"))
     except (OSError, UnicodeDecodeError, json.JSONDecodeError):
         return
+    if path_key is not None:
+        raw_data = _without_excluded(raw_data, path_key, exclude_dirs)
     path.write_text(json.dumps(raw_data, indent=2, ensure_ascii=False), encoding="utf-8")
 
 
@@ -127,7 +171,9 @@ def run_scanner(scanner: Scanner, request: ScanRequest, runner: CommandRunner) -
         stderr_to_devnull=command.stderr_to_devnull,
         env_overrides=command.env_overrides,
     )
-    _prettify_json(request.report_path)
+    _prettify_json(
+        request.report_path, path_key=scanner.path_key, exclude_dirs=request.exclude_dirs
+    )
     return ToolRunResult(
         name=scanner.label,
         returncode=result.returncode,

@@ -41,10 +41,13 @@ warden-config .
 {"url": "", "exclude_dirs": ["node_modules/", "vendor/", ".venv/"], ...}
 ```
 
-Each entry is forwarded to all three static scanners, but they interpret
-exclusions differently. Trivy takes directory paths, while Semgrep and Gitleaks
-take patterns. If something is still being scanned after you excluded it, try
-both a bare name (`node_modules`) and a trailing-slash form (`node_modules/`).
+Each entry is applied to all three static scanners, but they interpret
+exclusions differently. Trivy takes directory paths and Semgrep takes patterns.
+Gitleaks scans everything and Warden drops its findings under each listed
+directory, counted from the project root, so give it a plain directory such as
+`vendor/` rather than a glob. If something is still being scanned after you
+excluded it, try both a bare name (`node_modules`) and a trailing-slash form
+(`node_modules/`).
 
 Installed dependency directories often produce false positives. A `.venv/` or
 `node_modules/` full of third-party code will generate findings that are not
