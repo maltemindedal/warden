@@ -28,6 +28,8 @@ def _parse_args(argv: list[str] | None = None) -> CliOptions:
     parser.add_argument("--config", default=None, help=f"Optional path to {config.CONFIG_FILENAME}")
     namespace = parser.parse_args(argv)
     project_root = Path(cast(str, namespace.project_root)).resolve()
+    if not project_root.is_dir():
+        parser.error(f"--project-root {project_root} is not an existing directory")
     config_path_value = cast(str | None, namespace.config)
     return CliOptions(
         project_root=project_root,

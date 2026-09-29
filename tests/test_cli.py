@@ -4,6 +4,7 @@ import json
 import shutil
 from pathlib import Path
 
+import pytest
 from pytest import CaptureFixture
 
 from fakes import RecordingRunner, symlink_or_skip
@@ -140,3 +141,32 @@ def test_a_symlink_where_the_report_goes_is_replaced_not_followed(tmp_path: Path
     assert victim.read_text(encoding="utf-8") == "keep me"
     assert not report.is_symlink()
     assert json.loads(report.read_text(encoding="utf-8"))["summary"]["total_issues"] == 0
+
+
+def test_a_project_root_that_does_not_exist_is_a_usage_error_and_nothing_is_created(
+    tmp_path: Path, capsys: CaptureFixture[str]
+) -> None:
+    """A typo in a path used to be created on demand and scanned as an empty tree: PASS, exit 0."""
+    missing = tmp_path / "typo" / "does-not-exist"
+    runner = RecordingRunner()
+
+    with pytest.raises(SystemExit) as exit_info:
+        cli.main(["--project-root", str(missing)], runner=runner)
+
+    assert exit_info.value.code == 2
+    assert not (tmp_path / "typo").exists()
+    assert runner.commands == []
+    assert "is not an existing directory" in capsys.readouterr().err
+
+
+def test_a_project_root_that_is_a_file_is_a_usage_error(
+    tmp_path: Path, capsys: CaptureFixture[str]
+) -> None:
+    a_file = tmp_path / "a-file"
+    a_file.write_text("", encoding="utf-8")
+
+    with pytest.raises(SystemExit) as exit_info:
+        cli.main(["--project-root", str(a_file)], runner=RecordingRunner())
+
+    assert exit_info.value.code == 2
+    assert "is not an existing directory" in capsys.readouterr().err

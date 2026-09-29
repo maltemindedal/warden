@@ -25,7 +25,7 @@ usage: warden [-h] [-u URL] [--project-root PROJECT_ROOT] [--config CONFIG]
 | Flag | Default | Effect |
 | --- | --- | --- |
 | `-u`, `--url`, `-Url`, `--Url` | `""` | DAST target URL. Enables the ZAP stage. Overrides `target_url` from the config file. |
-| `--project-root` | `.` | Directory to scan. Resolved to an absolute path; the report is written here. |
+| `--project-root` | `.` | Directory to scan. Must be an existing directory. Resolved to an absolute path; the report is written here. |
 | `--config` | `<project-root>/.warden.yaml` | Path to an alternate config file. |
 | `-h`, `--help` | Not applicable | Print usage and exit. |
 
@@ -58,6 +58,7 @@ PowerShell habits and POSIX shells. All four spellings set the same value.
 | --- | --- |
 | `0` | No Critical or High findings. Printed as `PASS`. |
 | `1` | At least one Critical or High finding. Printed as `FAIL`. |
+| `2` | Invalid arguments, including a `--project-root` that is not an existing directory. Nothing is scanned or written. |
 
 Medium, Low, Info, and Unknown findings never affect the exit code. The
 threshold is fixed at Critical and High and is not currently configurable from
