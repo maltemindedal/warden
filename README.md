@@ -118,7 +118,7 @@ Dockerfile    Container bundling Warden with the scanners
 
 ## Contributing
 
-See [docs/contributing.md](docs/contributing.md) for the development setup and
+See [CONTRIBUTING.md](CONTRIBUTING.md) for the development setup and
 the quality gate (`ruff`, `ty`, `pytest`).
 
 ## License

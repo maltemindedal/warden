@@ -136,7 +136,7 @@ manual dispatch:
 
 The `scan` job means the project scans itself: a change that introduces a High
 or Critical finding will fail CI, including findings in workflow files or the
-`Dockerfile`. See [Using Warden in CI](guides/ci-github-actions.md).
+`Dockerfile`. See [Using Warden in CI](docs/guides/ci-github-actions.md).
 
 Actions are pinned to commit SHAs with the version in a trailing comment. When
 updating one, update both.
@@ -159,7 +159,7 @@ updating one, update both.
 
 Documentation lives in `docs/`, organised by purpose: tutorial, how-to guides,
 reference, explanation. When adding a document, add it to the table in
-[`docs/README.md`](README.md). Readers will not find an unlisted document from
+[`docs/README.md`](docs/README.md). Readers will not find an unlisted document from
 the documentation index.
 
 Verify any command you document by running it.

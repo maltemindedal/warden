@@ -44,5 +44,6 @@ Background and rationale.
 
 | Document | Covers |
 | --- | --- |
-| [Contributing](contributing.md) | Development environment, the quality gate, and what CI enforces. |
+| [Contributing](../CONTRIBUTING.md) | Development environment, the quality gate, and what CI enforces. |
+| [Security policy](../SECURITY.md) | How to report a vulnerability privately, and what is in scope. |
 | [AGENTS.md](../AGENTS.md) | Behavioural guidelines for AI coding agents working in this repository. |

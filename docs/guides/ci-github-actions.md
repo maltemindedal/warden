@@ -30,7 +30,7 @@ a scanner that ran left no usable report, or nothing ran.
 manual dispatch. It has two jobs:
 
 - `quality` runs formatting, linting, type checking, and tests. See
-  [Contributing](../contributing.md).
+  [Contributing](../../CONTRIBUTING.md).
 - `scan` runs Warden on this repository via the local action after `quality`
   passes.
 
