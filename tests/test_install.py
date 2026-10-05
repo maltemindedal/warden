@@ -181,8 +181,8 @@ def _uv_calls(log: Path) -> list[list[str]]:
 def test_the_cooldown_is_passed_to_uv_tool_install_as_one_quoted_argument(
     tmp_path: Path, stubs: Path
 ) -> None:
-    """`uv tool install` ignores [tool.uv], so it did not get the seven-day cooldown, and an
-    unquoted `--exclude-newer 7 days` is two arguments that real uv rejects."""
+    """`uv tool install` ignores [tool.uv], so it did not get the 24-hour cooldown, and an
+    unquoted `--exclude-newer 24 hours` is two arguments that real uv rejects."""
     home = tmp_path / "home"
     home.mkdir()
     log = tmp_path / "uv.log"
@@ -198,7 +198,7 @@ def test_the_cooldown_is_passed_to_uv_tool_install_as_one_quoted_argument(
         "--python",
         "3.11",
         "--exclude-newer",
-        "7 days",
+        "24 hours",
     ]
     assert install[7] == "-e"
 

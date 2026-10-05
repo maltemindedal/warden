@@ -13,7 +13,7 @@ UV_BIN_DIR="$HOME/.local/bin"
 # What gets downloaded is pinned, and the scanner archives are checked against the SHA-256 of the
 # release. Keep these in step with the Dockerfile, which pins the same versions.
 UV_VERSION="0.12.20"
-UV_MIN_VERSION="0.9.17" # the first uv that reads a duration such as "7 days" for --exclude-newer
+UV_MIN_VERSION="0.9.17" # the first uv that reads a duration such as "24 hours" for --exclude-newer
 TRIVY_VERSION="0.74.0"
 GITLEAKS_VERSION="8.30.1"
 
@@ -185,8 +185,8 @@ version_at_least() {
 }
 
 # `uv tool install` ignores this repository's uv.lock and its [tool.uv] settings, including the
-# seven-day cooldown on new releases, so the cooldown is passed explicitly. A uv older than
-# UV_MIN_VERSION rejects `--exclude-newer "7 days"` with a bare parse error, so say what is
+# 24-hour cooldown on new releases, so the cooldown is passed explicitly. A uv older than
+# UV_MIN_VERSION rejects `--exclude-newer "24 hours"` with a bare parse error, so say what is
 # wrong and what to do before it gets that far.
 uv_version="$(uv --version | awk '{print $2}')"
 if ! version_at_least "$uv_version" "$UV_MIN_VERSION"; then
@@ -197,7 +197,7 @@ fi
 
 echo -e "${CYAN}[*] Installing Warden with uv...${NC}"
 uv python install 3.11
-uv tool install --force --python 3.11 --exclude-newer "7 days" -e "$SCRIPT_DIR"
+uv tool install --force --python 3.11 --exclude-newer "24 hours" -e "$SCRIPT_DIR"
 
 # These are unset in a non-interactive shell, so every read needs a default.
 # Without one, `set -u` would abort the script before it finishes.
