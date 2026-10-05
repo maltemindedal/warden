@@ -1,5 +1,8 @@
 # Contributing
 
+Everyone taking part in this project is expected to follow the
+[Code of Conduct](CODE_OF_CONDUCT.md).
+
 ## Development environment
 
 Warden uses [uv](https://docs.astral.sh/uv/) for dependency and environment
