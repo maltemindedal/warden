@@ -4,7 +4,7 @@ Write-Host "Installing Warden..." -ForegroundColor Cyan
 $UvBinPath = Join-Path $HOME ".local\bin"
 
 # uv is installed at a pinned version. The minimum is the first uv that reads a duration such as
-# "7 days" for --exclude-newer. install.sh pins the same version.
+# "24 hours" for --exclude-newer. install.sh pins the same version.
 $UvVersion = "0.12.20"
 $UvMinVersion = [version]"0.9.17"
 
@@ -44,8 +44,8 @@ if (!(Get-Command gitleaks -ErrorAction SilentlyContinue)) {
 }
 
 # `uv tool install` ignores this repository's uv.lock and its [tool.uv] settings, including the
-# seven-day cooldown on new releases, so the cooldown is passed explicitly. A uv older than
-# $UvMinVersion rejects `--exclude-newer "7 days"` with a bare parse error, so say what is
+# 24-hour cooldown on new releases, so the cooldown is passed explicitly. A uv older than
+# $UvMinVersion rejects `--exclude-newer "24 hours"` with a bare parse error, so say what is
 # wrong and what to do before it gets that far.
 if ((& uv --version) -match '(\d+\.\d+\.\d+)') {
     $UvInstalled = [version]$Matches[1]
@@ -57,7 +57,7 @@ if ((& uv --version) -match '(\d+\.\d+\.\d+)') {
 
 Write-Host "[*] Installing Warden with uv..."
 uv python install 3.11
-uv tool install --force --python 3.11 --exclude-newer "7 days" -e $PSScriptRoot
+uv tool install --force --python 3.11 --exclude-newer "24 hours" -e $PSScriptRoot
 
 $CurrentPath = [Environment]::GetEnvironmentVariable("Path", "User")
 if ($CurrentPath -notlike "*$UvBinPath*") {

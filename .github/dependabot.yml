@@ -1,4 +1,4 @@
-# Version updates for what the repository pins. Each ecosystem has a seven-day cooldown, the
+# Version updates for what the repository pins. Each ecosystem has a one-day cooldown, the
 # same window as `exclude-newer` in pyproject.toml, with one exception: Dependabot applies it to
 # the docker ecosystem only for Docker Hub images, so a pull request for the `ghcr.io/astral-sh/uv`
 # stage is opened the day the release appears. Check the release's age before merging it.
@@ -17,7 +17,7 @@ updates:
     schedule:
       interval: weekly
     cooldown:
-      default-days: 7
+      default-days: 1
 
   # The pinned actions in .github/workflows and in the root action.yml.
   - package-ecosystem: github-actions
@@ -25,7 +25,7 @@ updates:
     schedule:
       interval: weekly
     cooldown:
-      default-days: 7
+      default-days: 1
 
   # The `FROM` lines of the Dockerfile: the uv stage (version and digest) and the Python base.
   - package-ecosystem: docker
@@ -33,7 +33,7 @@ updates:
     schedule:
       interval: weekly
     cooldown:
-      default-days: 7
+      default-days: 1
     ignore:
       # Warden supports Python 3.11 and the image stays on it; a newer minor is a decision.
       - dependency-name: python

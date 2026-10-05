@@ -59,7 +59,7 @@ What it downloads is pinned. On Linux, uv comes from its versioned installer, an
 Trivy and Gitleaks are fetched at a fixed version and installed only if the archive
 matches a SHA-256 recorded in `install.sh` (on macOS they come from Homebrew, on
 Windows from Scoop or Chocolatey, at whatever version those carry). Warden's own
-dependencies are installed with a seven-day cooldown, like the lockfile's, which
+dependencies are installed with a 24-hour cooldown, like the lockfile's, which
 needs uv 0.9.17 or newer: the installer stops with a message if yours is older.
 
 If the installer says it added a directory to your `PATH`, or that your shell

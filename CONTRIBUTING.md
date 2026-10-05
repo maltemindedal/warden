@@ -92,8 +92,8 @@ uv add --dev <package>
 
 Two constraints in `[tool.uv]` are deliberate and will affect you:
 
-- **`exclude-newer = "7 days"`** sets a dependency cooldown. Distributions
-  published in the last seven days are not resolvable, so a new release
+- **`exclude-newer = "24 hours"`** sets a dependency cooldown. Distributions
+  published in the last 24 hours are not resolvable, so a new release
   cannot be pulled in silently. If a lock fails on a very recent version, this is
   why; wait for it to age out rather than removing the setting. A relative
   duration needs uv 0.9.17 or newer; older releases cannot parse it, skip the
@@ -114,7 +114,7 @@ settings. Run `uv lock` after editing it; CI and the image build install with
 
 `.github/dependabot.yml` opens pull requests for the `uv` lock, the pinned GitHub
 Actions and the Dockerfile's `FROM` lines (the uv stage and the Python base, held
-to 3.11), waiting seven days after a release like the cooldown above. There is one
+to 3.11), waiting a day after a release like the cooldown above. There is one
 exception: for the Dockerfile Dependabot applies that wait only to Docker Hub images,
 so a pull request for the uv stage (`ghcr.io/astral-sh/uv`) appears as soon as the
 release does. Check the release's age before merging it, and change `UV_VERSION` in
