@@ -19,7 +19,7 @@ warden-config = "warden.config:main"
 warden-aggregate = "warden.aggregate:main"
 
 [dependency-groups]
-dev = ["pytest>=9.0.3,<10", "pytest-cov>=7.1,<8", "ruff>=0.16.10,<0.17", "ty>=0.0.73,<0.1"]
+dev = ["pytest>=9.0.3,<10", "pytest-cov>=7.1,<8", "ruff>=0.16.10,<0.17", "ty>=0.0.84,<0.1"]
 
 [tool.uv]
 # Dependency cooldown: ignore distributions published in the last 24 hours, so a
