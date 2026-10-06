@@ -1,0 +1,63 @@
+name: Bug report
+description: Something in Warden does not work as documented.
+labels: ["bug"]
+body:
+  - type: dropdown
+    id: part
+    attributes:
+      label: Affected part
+      options:
+        - The CLI
+        - The GitHub Action
+        - The Docker image
+        - An installer
+    validations:
+      required: true
+  - type: input
+    id: commit
+    attributes:
+      label: Commit
+      description: Warden has no releases yet. Give the commit you ran, or the SHA you pinned the action to.
+    validations:
+      required: true
+  - type: textarea
+    id: run
+    attributes:
+      label: How you ran it
+      description: The command and flags, and your `.warden.yaml` or the output of `warden-config .`
+      render: shell
+    validations:
+      required: true
+  - type: textarea
+    id: environment
+    attributes:
+      label: Environment
+      description: Operating system, Python and Docker versions, and the version of each scanner involved (Trivy, Semgrep, Gitleaks, ZAP).
+    validations:
+      required: true
+  - type: textarea
+    id: steps
+    attributes:
+      label: Steps to reproduce
+      description: Ideally a minimal project that triggers it.
+    validations:
+      required: true
+  - type: textarea
+    id: expected
+    attributes:
+      label: Expected behaviour
+    validations:
+      required: true
+  - type: textarea
+    id: actual
+    attributes:
+      label: Actual behaviour
+      description: What happened instead, including the exit code.
+    validations:
+      required: true
+  - type: textarea
+    id: output
+    attributes:
+      label: Output
+      description: Console output, including any `Warning:` lines, and the relevant part of `security_audit.json`. Remove anything sensitive; the reports name every finding and where it is.
+      render: text

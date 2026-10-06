@@ -45,5 +45,6 @@ Background and rationale.
 | Document | Covers |
 | --- | --- |
 | [Contributing](../CONTRIBUTING.md) | Development environment, the quality gate, and what CI enforces. |
+| [Code of conduct](../CODE_OF_CONDUCT.md) | How to behave in this community, and how to report a violation. |
 | [Security policy](../SECURITY.md) | How to report a vulnerability privately, and what is in scope. |
 | [AGENTS.md](../AGENTS.md) | Behavioural guidelines for AI coding agents working in this repository. |
