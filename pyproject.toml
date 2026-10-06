@@ -22,10 +22,6 @@ warden-aggregate = "warden.aggregate:main"
 dev = ["pytest>=9.0.3,<10", "pytest-cov>=7.1,<8", "ruff>=0.16.10,<0.17", "ty>=0.0.84,<0.1"]
 
 [tool.uv]
-# Dependency cooldown: ignore distributions published in the last 24 hours, so a
-# freshly-published malicious or yanked release cannot be picked up silently.
-# Relative rather than a fixed date, so the window rolls without maintenance.
-exclude-newer = "24 hours"
 default-groups = ["dev"]
 # semgrep 1.146 to 1.172 pin mcp==1.23.3 (older releases pin older mcp releases or none), which
 # carries GHSA-hvrp-rf83-w775, GHSA-jpw9-pfvf-9f58 and GHSA-vj7q-gjh5-988w. We only use semgrep's

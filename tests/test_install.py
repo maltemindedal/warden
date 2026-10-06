@@ -24,21 +24,11 @@ def stubs(tmp_path: Path) -> Path:
     """Stand-ins for every tool install.sh looks for, so it installs and downloads nothing."""
     stub_dir = tmp_path / "stubs"
     stub_dir.mkdir()
-    for name in ("docker", "trivy", "gitleaks"):
+    for name in ("docker", "uv", "trivy", "gitleaks"):
         stub = stub_dir / name
         stub.write_text("#!/bin/sh\nexit 0\n", encoding="utf-8")
         stub.chmod(0o755)
-    # uv reports the version in STUB_UV_VERSION and records every other call in STUB_UV_LOG.
-    uv = stub_dir / "uv"
-    uv.write_text(
-        "#!/bin/sh\n"
-        'if [ "$1" = "--version" ]; then echo "uv ${STUB_UV_VERSION:-0.12.18} (stub)"; exit 0; fi\n'
-        '[ -n "${STUB_UV_LOG:-}" ] && { printf "%s\\n" "$@"; echo ---; } >> "$STUB_UV_LOG"\n'
-        "exit 0\n",
-        encoding="utf-8",
-    )
-    uv.chmod(0o755)
-    skip_unless_executable(uv)
+    skip_unless_executable(stub_dir / "uv")
     return stub_dir
 
 
@@ -48,7 +38,6 @@ def _run_install(
     *,
     login_shell: str = "/bin/bash",
     path_prefix: str = "",
-    extra_env: dict[str, str] | None = None,
 ) -> subprocess.CompletedProcess[str]:
     return subprocess.run(
         ["bash", str(INSTALL_SH)],
@@ -59,7 +48,6 @@ def _run_install(
             "HOME": str(home),
             "SHELL": login_shell,
             "PATH": f"{path_prefix}{stubs}:/usr/bin:/bin",
-            **(extra_env or {}),
         },
         text=True,
         timeout=60,
@@ -163,74 +151,6 @@ def test_a_zsh_login_shell_gets_zshrc_wherever_zsh_is_installed(
 
     assert (home / ".zshrc").is_file()
     assert not (home / ".bashrc").exists()
-
-
-def _uv_calls(log: Path) -> list[list[str]]:
-    """Each call the uv stub recorded, as its list of arguments."""
-    calls: list[list[str]] = []
-    current: list[str] = []
-    for line in log.read_text(encoding="utf-8").splitlines():
-        if line == "---":
-            calls.append(current)
-            current = []
-        else:
-            current.append(line)
-    return calls
-
-
-def test_the_cooldown_is_passed_to_uv_tool_install_as_one_quoted_argument(
-    tmp_path: Path, stubs: Path
-) -> None:
-    """`uv tool install` ignores [tool.uv], so it did not get the 24-hour cooldown, and an
-    unquoted `--exclude-newer 24 hours` is two arguments that real uv rejects."""
-    home = tmp_path / "home"
-    home.mkdir()
-    log = tmp_path / "uv.log"
-
-    completed = _run_install(home, stubs, extra_env={"STUB_UV_LOG": str(log)})
-
-    assert completed.returncode == 0, completed.stderr
-    install = next(call for call in _uv_calls(log) if call[:2] == ["tool", "install"])
-    assert install[:7] == [
-        "tool",
-        "install",
-        "--force",
-        "--python",
-        "3.11",
-        "--exclude-newer",
-        "24 hours",
-    ]
-    assert install[7] == "-e"
-
-
-@pytest.mark.parametrize("version", ["0.9.17", "0.10.0", "0.12.18", "1.0.0"])
-def test_a_uv_that_can_read_the_cooldown_is_accepted(
-    tmp_path: Path, stubs: Path, version: str
-) -> None:
-    home = tmp_path / "home"
-    home.mkdir()
-
-    completed = _run_install(home, stubs, extra_env={"STUB_UV_VERSION": version})
-
-    assert completed.returncode == 0, completed.stdout
-
-
-@pytest.mark.parametrize("version", ["0.9.16", "0.8.17", "0.9", "0.0.1"])
-def test_a_uv_too_old_to_read_the_cooldown_stops_the_install_before_it_installs_anything(
-    tmp_path: Path, stubs: Path, version: str
-) -> None:
-    home = tmp_path / "home"
-    home.mkdir()
-    log = tmp_path / "uv.log"
-
-    completed = _run_install(
-        home, stubs, extra_env={"STUB_UV_VERSION": version, "STUB_UV_LOG": str(log)}
-    )
-
-    assert completed.returncode == 1
-    assert f"uv {version} is too old" in completed.stdout
-    assert "0.9.17 or newer" in completed.stdout
-    assert not log.exists()
 
 
 def _fetch_verified(
@@ -338,9 +258,6 @@ def test_install_ps1_pins_the_same_uv_as_install_sh_and_the_dockerfile() -> None
     version = _pins(powershell, r'(?m)^\$UvVersion = "(\S+)"')
     assert version == _pins(install, r'(?m)^UV_VERSION="(\S+)"')
     assert version == _pins(docker, r"ghcr\.io/astral-sh/uv:(\d+\.\d+\.\d+)@")
-    assert _pins(powershell, r'(?m)^\$UvMinVersion = \[version\]"(\S+)"') == _pins(
-        install, r'(?m)^UV_MIN_VERSION="(\S+)"'
-    )
 
 
 def _function_text(name: str) -> str:

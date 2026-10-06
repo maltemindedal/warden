@@ -3,10 +3,8 @@ Write-Host "Installing Warden..." -ForegroundColor Cyan
 
 $UvBinPath = Join-Path $HOME ".local\bin"
 
-# uv is installed at a pinned version. The minimum is the first uv that reads a duration such as
-# "24 hours" for --exclude-newer. install.sh pins the same version.
+# uv is installed at a pinned version. install.sh pins the same version.
 $UvVersion = "0.12.23"
-$UvMinVersion = [version]"0.9.17"
 
 if (!(Get-Command docker -ErrorAction SilentlyContinue)) {
     Write-Error "Missing requirement: Docker. Please install it first."
@@ -43,21 +41,9 @@ if (!(Get-Command gitleaks -ErrorAction SilentlyContinue)) {
     }
 }
 
-# `uv tool install` ignores this repository's uv.lock and its [tool.uv] settings, including the
-# 24-hour cooldown on new releases, so the cooldown is passed explicitly. A uv older than
-# $UvMinVersion rejects `--exclude-newer "24 hours"` with a bare parse error, so say what is
-# wrong and what to do before it gets that far.
-if ((& uv --version) -match '(\d+\.\d+\.\d+)') {
-    $UvInstalled = [version]$Matches[1]
-    if ($UvInstalled -lt $UvMinVersion) {
-        Write-Error "uv $UvInstalled is too old: this install needs uv $UvMinVersion or newer. Update it (https://docs.astral.sh/uv/getting-started/installation/) and run this script again."
-        exit 1
-    }
-}
-
 Write-Host "[*] Installing Warden with uv..."
 uv python install 3.11
-uv tool install --force --python 3.11 --exclude-newer "24 hours" -e $PSScriptRoot
+uv tool install --force --python 3.11 -e $PSScriptRoot
 
 $CurrentPath = [Environment]::GetEnvironmentVariable("Path", "User")
 if ($CurrentPath -notlike "*$UvBinPath*") {
