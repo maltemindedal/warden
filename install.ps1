@@ -5,7 +5,7 @@ $UvBinPath = Join-Path $HOME ".local\bin"
 
 # uv is installed at a pinned version. The minimum is the first uv that reads a duration such as
 # "24 hours" for --exclude-newer. install.sh pins the same version.
-$UvVersion = "0.12.20"
+$UvVersion = "0.12.23"
 $UvMinVersion = [version]"0.9.17"
 
 if (!(Get-Command docker -ErrorAction SilentlyContinue)) {
