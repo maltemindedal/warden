@@ -6,8 +6,7 @@ Everyone taking part in this project is expected to follow the
 ## Development environment
 
 Warden uses [uv](https://docs.astral.sh/uv/) for dependency and environment
-management. You need uv 0.9.17 or newer, because the dependency cooldown below
-is a relative duration that older releases cannot parse. From a clone:
+management. From a clone:
 
 ```bash
 uv sync --python 3.11
@@ -93,14 +92,8 @@ uv add <package>
 uv add --dev <package>
 ```
 
-Two constraints in `[tool.uv]` are deliberate and will affect you:
+One constraint in `[tool.uv]` is deliberate and will affect you:
 
-- **`exclude-newer = "24 hours"`** sets a dependency cooldown. Distributions
-  published in the last 24 hours are not resolvable, so a new release
-  cannot be pulled in silently. If a lock fails on a very recent version, this is
-  why; wait for it to age out rather than removing the setting. A relative
-  duration needs uv 0.9.17 or newer; older releases cannot parse it, skip the
-  cooldown, re-resolve, and `uv sync --locked` fails.
 - **`override-dependencies = ["mcp>=1.28.1,<2"]`** overrides the
   `mcp==1.23.3` pin of Semgrep 1.146 to 1.172 (older releases pin older mcp
   releases or none), which carries known advisories. Warden uses Semgrep's CLI scanner and never its MCP server, so the
@@ -117,10 +110,11 @@ settings. Run `uv lock` after editing it; CI and the image build install with
 
 `.github/dependabot.yml` opens pull requests for the `uv` lock, the pinned GitHub
 Actions and the Dockerfile's `FROM` lines (the uv stage and the Python base, held
-to 3.11), waiting a day after a release like the cooldown above. There is one
-exception: for the Dockerfile Dependabot applies that wait only to Docker Hub images,
-so a pull request for the uv stage (`ghcr.io/astral-sh/uv`) appears as soon as the
-release does. Check the release's age before merging it, and change `UV_VERSION` in
+to 3.11). No cooldown is configured, so Dependabot's own default delay for version
+updates applies; security updates are never delayed. There is one exception: for
+the Dockerfile Dependabot applies that delay only to Docker Hub images, so a pull
+request for the uv stage (`ghcr.io/astral-sh/uv`) appears as soon as the release
+does. Check the release's age before merging it, and change `UV_VERSION` in
 `install.sh` and `$UvVersion` in `install.ps1` to the same version in that pull
 request (a test fails until all three agree).
 

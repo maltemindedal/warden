@@ -13,7 +13,6 @@ UV_BIN_DIR="$HOME/.local/bin"
 # What gets downloaded is pinned, and the scanner archives are checked against the SHA-256 of the
 # release. Keep these in step with the Dockerfile, which pins the same versions.
 UV_VERSION="0.12.23"
-UV_MIN_VERSION="0.9.17" # the first uv that reads a duration such as "24 hours" for --exclude-newer
 TRIVY_VERSION="0.74.0"
 GITLEAKS_VERSION="8.30.1"
 
@@ -169,35 +168,9 @@ else
 	echo -e "${GREEN}   -> Gitleaks already installed.${NC}"
 fi
 
-# Is dotted version $1 at least $2? Numeric parts only, so it also works on bash 3.2 and macOS.
-version_at_least() {
-	local IFS=. index have need
-	read -ra have <<<"$1"
-	read -ra need <<<"$2"
-	for index in 0 1 2; do
-		local h="${have[index]:-0}" n="${need[index]:-0}"
-		h="${h%%[!0-9]*}"
-		n="${n%%[!0-9]*}"
-		if ((10#${h:-0} > 10#${n:-0})); then return 0; fi
-		if ((10#${h:-0} < 10#${n:-0})); then return 1; fi
-	done
-	return 0
-}
-
-# `uv tool install` ignores this repository's uv.lock and its [tool.uv] settings, including the
-# 24-hour cooldown on new releases, so the cooldown is passed explicitly. A uv older than
-# UV_MIN_VERSION rejects `--exclude-newer "24 hours"` with a bare parse error, so say what is
-# wrong and what to do before it gets that far.
-uv_version="$(uv --version | awk '{print $2}')"
-if ! version_at_least "$uv_version" "$UV_MIN_VERSION"; then
-	echo -e "${RED}uv $uv_version is too old: this install needs uv $UV_MIN_VERSION or newer.${NC}"
-	echo -e "${RED}Update it (https://docs.astral.sh/uv/getting-started/installation/) and run this script again.${NC}"
-	exit 1
-fi
-
 echo -e "${CYAN}[*] Installing Warden with uv...${NC}"
 uv python install 3.11
-uv tool install --force --python 3.11 --exclude-newer "24 hours" -e "$SCRIPT_DIR"
+uv tool install --force --python 3.11 -e "$SCRIPT_DIR"
 
 # These are unset in a non-interactive shell, so every read needs a default.
 # Without one, `set -u` would abort the script before it finishes.
