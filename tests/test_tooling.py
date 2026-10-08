@@ -570,26 +570,15 @@ def test_a_report_that_is_not_json_is_left_alone(tmp_path: Path) -> None:
     assert (tmp_path / "trivy.json").read_text(encoding="utf-8") == "not json"
 
 
-@pytest.mark.parametrize(
-    ("report_text", "written", "usable"),
-    [
-        (None, False, False),
-        ("not json", True, False),
-        ("null", True, False),
-        ("[]", True, False),
-        ("{}", True, True),
-    ],
-)
-def test_a_run_records_whether_it_left_a_report_and_whether_its_parser_reads_it(
-    tmp_path: Path, report_text: str | None, written: bool, usable: bool
+@pytest.mark.parametrize(("report_text", "written"), [(None, False), ("not json", True)])
+def test_a_run_records_whether_it_left_a_report(
+    tmp_path: Path, report_text: str | None, written: bool
 ) -> None:
-    """`--strict` reads `report_usable` from the result, so the run must judge the report it left.
-
-    Trivy writes an object, so an array is written but not usable, as is anything that is not JSON.
-    """
+    """The CLI prints "Done." for a scanner that left a report, whatever the report holds: whether
+    that report counts is the aggregator's call, in `tools_run`."""
     result = _run(TRIVY, tmp_path, RecordingRunner(report_text=report_text))
 
-    assert (result.report_written, result.report_usable) == (written, usable)
+    assert result.report_written is written
 
 
 def test_a_report_holding_a_lone_surrogate_is_tidied_and_reads_back_the_same(
@@ -602,9 +591,8 @@ def test_a_report_holding_a_lone_surrogate_is_tidied_and_reads_back_the_same(
         r'"extra": {"severity": "ERROR", "message": "m"}}]}'
     )
 
-    result = _run(SEMGREP, tmp_path, RecordingRunner(report_text=report))
+    _run(SEMGREP, tmp_path, RecordingRunner(report_text=report))
 
-    assert result.report_usable
     assert json.loads((tmp_path / "semgrep.json").read_text(encoding="utf-8")) == json.loads(report)
 
 
@@ -618,21 +606,21 @@ def test_a_report_nested_past_100_levels_is_left_as_the_scanner_wrote_it(
     nested = "[" * (depth - 2) + "]" * (depth - 2)
     text = '[{"RuleID": "r", "File": "vendor/key.pem", "Extra": ' + nested + "}]"
 
-    result = _run(GITLEAKS, tmp_path, RecordingRunner(report_text=text), exclude_dirs=["vendor"])
+    _run(GITLEAKS, tmp_path, RecordingRunner(report_text=text), exclude_dirs=["vendor"])
 
-    assert result.report_usable
     assert (tmp_path / "gitleaks.json").read_text(encoding="utf-8") == ("[]" if rewritten else text)
     assert ("nests more than 100 levels deep" in capsys.readouterr().out) is not rewritten
 
 
-def test_a_gitleaks_report_with_every_finding_excluded_is_still_usable(tmp_path: Path) -> None:
-    """Filtering `exclude_dirs` out of the report must leave the shape `--strict` looks for."""
+def test_a_gitleaks_report_with_every_finding_excluded_still_counts_as_run(tmp_path: Path) -> None:
+    """Filtering `exclude_dirs` out of the report must leave the shape `tools_run` looks for."""
     runner = RecordingRunner(report_text='[{"RuleID": "r", "File": "vendor/key.pem"}]')
 
-    result = _run(GITLEAKS, tmp_path, runner, exclude_dirs=["vendor"])
+    _run(GITLEAKS, tmp_path, runner, exclude_dirs=["vendor"])
 
-    assert result.report_usable
-    assert json.loads((tmp_path / "gitleaks.json").read_text(encoding="utf-8")) == []
+    report = json.loads((tmp_path / "gitleaks.json").read_text(encoding="utf-8"))
+    assert report == []
+    assert GITLEAKS.reads_report(report)
 
 
 def test_every_scanner_can_build_a_command_line(tmp_path: Path) -> None:

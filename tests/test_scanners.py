@@ -83,7 +83,8 @@ def test_no_parser_names_its_own_tool() -> None:
 
 
 def test_each_scanner_reads_the_shape_of_its_own_fixture_report() -> None:
-    """`--strict` judges a report by `Scanner.reads_report`, and the parser walks it on its own.
+    """`tools_run`, and `--strict` through it, judge a report by `Scanner.reads_report`, while
+    the parser walks it on its own.
 
     A report the parser takes findings from must count as a usable one, or a run that worked
     would be held against the build: the record's `report_is_array` has to agree with the parser.

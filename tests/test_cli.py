@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 import io
-import itertools
 import json
 import shutil
 import sys
@@ -414,45 +413,20 @@ def test_a_report_holding_a_lone_surrogate_does_not_stop_the_audit(
     assert "AUDIT FAILED!" in capsys.readouterr().out
 
 
-def test_a_report_at_any_depth_neither_stops_the_audit_nor_splits_strict_from_tools_run(
-    tmp_path: Path,
-) -> None:
+@pytest.mark.parametrize("depth", [2_000, 100_000])
+def test_a_deeply_nested_report_does_not_stop_the_audit(tmp_path: Path, depth: int) -> None:
     """A report nested past the recursion limit raised out of `json.loads`, and on Python 3.12
-    out of the rewrite, which reads ten times deeper than it writes: the audit stopped there.
+    out of the rewrite, which reads ten times deeper than it indents: the audit stopped there.
+    2,000 levels can be read from 3.12 on, and 100,000 by no Python."""
+    semgrep_report = '{"results": [' + "[" * depth + "]" * depth + "]}"
+    runner = RecordingRunner(report_texts={**USABLE_REPORTS, "semgrep.json": semgrep_report})
 
-    `--strict` judges a report from the read that tidies it and `tools_run` from the aggregator's
-    read. Were one to give out a level sooner than the other, the gate could pass on a report it
-    never read. Only near the depth where reading gives out can they differ, so that depth is
-    found by bisection and every depth around it is checked.
-    """
-    runs = itertools.count()
+    exit_code = _strict(tmp_path, runner)
 
-    def counted(depth: int) -> bool:
-        root = tmp_path / str(next(runs))
-        root.mkdir()
-        semgrep_report = '{"results": [' + "[" * depth + "]" * depth + "]}"
-        runner = RecordingRunner(report_texts={**USABLE_REPORTS, "semgrep.json": semgrep_report})
-
-        exit_code = _strict(root, runner)
-
-        report = json.loads((root / "security_audit.json").read_text(encoding="utf-8"))
-        semgrep_counted = "Semgrep" in report["summary"]["tools_run"]
-        assert len(runner.commands) == 3, depth
-        assert exit_code == (0 if semgrep_counted else cli.EXIT_INCOMPLETE), depth
-        return semgrep_counted
-
-    readable, unreadable = 1, 100_000
-    assert counted(readable)
-    assert not counted(unreadable)
-    while unreadable - readable > 1:
-        middle = (readable + unreadable) // 2
-        if counted(middle):
-            readable = middle
-        else:
-            unreadable = middle
-    for depth in range(unreadable - 5, unreadable + 5):
-        counted(depth)
-    counted(2_000)  # readable from Python 3.12 on, which cannot indent it, and never rewritten
+    report = json.loads((tmp_path / "security_audit.json").read_text(encoding="utf-8"))
+    counted = "Semgrep" in report["summary"]["tools_run"]
+    assert len(runner.commands) == 3
+    assert exit_code == (0 if counted else cli.EXIT_INCOMPLETE)
 
 
 def test_strict_counts_a_report_whose_scanner_exited_non_zero_because_it_had_alerts(

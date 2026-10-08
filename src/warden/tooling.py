@@ -9,7 +9,7 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Protocol, cast
 
-from ._json import LoadedJson, as_mapping, get_string, load_json, write_json
+from ._json import as_mapping, get_string, load_json, write_json
 from ._models import CommandResult
 from ._scanners import SCANNERS, Scanner, ScanRequest
 
@@ -36,11 +36,6 @@ class ToolRunResult:
     returncode: int | None
     report_path: Path
     report_written: bool
-    report_usable: bool
-    """Whether the report has the shape the scanner's parser reads, so its run counts.
-
-    The exit status is not consulted: ZAP exits non-zero when it has alerts, and a clean Trivy
-    report is an object with no `Results` in it, so only the shape of the file says it ran."""
     warning: str | None = None
 
     @property
@@ -263,17 +258,17 @@ def _nested_deeper_than(data: object, limit: int) -> bool:
 
 def _tidy_report(
     path: Path, *, path_key: str | None = None, exclude_dirs: Sequence[str] = ()
-) -> LoadedJson:
+) -> None:
     """Pretty-print the report a scanner left, without the findings under `exclude_dirs`.
 
-    What comes back is what the report now holds. One that is absent or not JSON is left alone,
-    and so is one nested deeper than `_MAX_TIDY_DEPTH`, with a warning.
+    One that is absent or not JSON is left alone, and so is one nested deeper than
+    `_MAX_TIDY_DEPTH`, with a warning.
     """
     if not path.exists():
-        return LoadedJson()
+        return
     loaded = load_json(path)
     if loaded.error is not None:
-        return loaded
+        return
     if _nested_deeper_than(loaded.data, _MAX_TIDY_DEPTH):
         # Left as the scanner wrote it, the report keeps every finding, those under
         # `exclude_dirs` too: dropping one is never the safe way to be wrong.
@@ -281,12 +276,11 @@ def _tidy_report(
             f"Warning: {path.name} nests more than {_MAX_TIDY_DEPTH} levels deep: "
             "left as the scanner wrote it."
         )
-        return loaded
+        return
     raw_data = loaded.data
     if path_key is not None:
         raw_data = _without_excluded(raw_data, path_key, exclude_dirs)
     write_json(path, raw_data)
-    return LoadedJson(data=raw_data)
 
 
 def scan_request(
@@ -315,7 +309,7 @@ def run_scanner(
     *,
     timeout: float | None = None,
 ) -> ToolRunResult:
-    """Build this scanner's command line, run it, and read what it left, once."""
+    """Build this scanner's command line, run it, and tidy the report it left."""
     command = scanner.build_command(request)
     result = runner(
         command.args,
@@ -330,14 +324,11 @@ def run_scanner(
         if command.on_timeout is not None:
             # Best effort: the container may be gone already, and only the attempt matters.
             runner(command.on_timeout, cwd=command.cwd, stderr_to_devnull=True, timeout=30)
-    report = _tidy_report(
-        request.report_path, path_key=scanner.path_key, exclude_dirs=request.exclude_dirs
-    )
+    _tidy_report(request.report_path, path_key=scanner.path_key, exclude_dirs=request.exclude_dirs)
     return ToolRunResult(
         scanner=scanner,
         returncode=result.returncode,
         report_path=request.report_path,
         report_written=request.report_path.exists(),
-        report_usable=scanner.reads_report(report.data),
         warning=result.warning,
     )

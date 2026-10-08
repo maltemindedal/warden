@@ -3,7 +3,7 @@ from __future__ import annotations
 import argparse
 import io
 import sys
-from dataclasses import dataclass, replace
+from dataclasses import replace
 from pathlib import Path
 from typing import cast
 
@@ -68,12 +68,18 @@ def _parse_args(argv: list[str] | None = None) -> CliOptions:
     )
 
 
-def _incomplete(tools: _ToolsRun, skipped_for_url: tuple[str, ...]) -> str | None:
-    """What `--strict` holds against the run, or `None` if every scanner that was asked for ran."""
-    missing = [*tools.unusable, *skipped_for_url]
+def _incomplete(
+    attempted: tuple[str, ...], tools_run: list[str], skipped_for_url: tuple[str, ...]
+) -> str | None:
+    """What `--strict` holds against the run, or `None` if every scanner that was asked for ran.
+
+    A scanner that was started counts as run exactly when the report lists it in `tools_run`, so
+    the gate cannot pass on a report the aggregator did not read.
+    """
+    missing = [*(label for label in attempted if label not in tools_run), *skipped_for_url]
     if missing:
         return f"{', '.join(missing)} did not produce a usable report, so the scan is incomplete."
-    if not tools.attempted:
+    if not attempted:
         return "no scanner ran, so the scan is incomplete."
     return None
 
@@ -132,24 +138,16 @@ def _skip_reason(scanner: Scanner, *, enabled: bool, url: str) -> str | None:
     return None
 
 
-@dataclass(slots=True, frozen=True)
-class _ToolsRun:
-    """Which scanners were started, and which of those left no usable report."""
-
-    attempted: tuple[str, ...]
-    unusable: tuple[str, ...]
-
-
 def _run_enabled_tools(
     project_root: Path,
     report_dir: Path,
     resolved: ResolvedConfig,
     runner: tooling.CommandRunner,
     timeout: float | None,
-) -> _ToolsRun:
+) -> tuple[str, ...]:
+    """Run each enabled scanner in turn; return the labels of those that were started."""
     total = len(SCANNERS)
     attempted: list[str] = []
-    unusable: list[str] = []
 
     print()
     for step, scanner in enumerate(SCANNERS, start=1):
@@ -173,9 +171,7 @@ def _run_enabled_tools(
         result = tooling.run_scanner(scanner, request, runner, timeout=timeout)
         _print_result(result)
         attempted.append(scanner.label)
-        if not result.report_usable:
-            unusable.append(scanner.label)
-    return _ToolsRun(attempted=tuple(attempted), unusable=tuple(unusable))
+    return tuple(attempted)
 
 
 def run_audit(options: CliOptions, *, runner: tooling.CommandRunner) -> int:
@@ -209,14 +205,18 @@ def run_audit(options: CliOptions, *, runner: tooling.CommandRunner) -> int:
             )
             resolved = replace(resolved, url="")
 
-    tools = _run_enabled_tools(options.project_root, report_dir, resolved, runner, options.timeout)
+    attempted = _run_enabled_tools(
+        options.project_root, report_dir, resolved, runner, options.timeout
+    )
 
     print("\n[*] Generating Final Report...")
     try:
-        verdict = aggregate.generate_report(report_dir=report_dir, output_file=output_file)
+        verdict, tools_run = aggregate.generate_report(
+            report_dir=report_dir, output_file=output_file
+        )
     except OSError as error:
         return _fail(f"cannot read the reports or write {output_file.name}: {_describe(error)}")
-    incomplete = _incomplete(tools, skipped_for_url) if options.strict else None
+    incomplete = _incomplete(attempted, tools_run, skipped_for_url) if options.strict else None
     if incomplete is not None:
         print(f"\nSTRICT: {incomplete}")
     if verdict.failed:

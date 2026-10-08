@@ -56,7 +56,12 @@ def _load_reports(report_dir: Path) -> list[tuple[Scanner, object | None]]:
 
 
 def detect_tools_run(reports: Sequence[tuple[Scanner, object | None]]) -> list[str]:
-    """The scanners whose report has the shape their parser reads, as `--strict` counts them."""
+    """The scanners whose report has the shape their parser reads: those that count as run.
+
+    The exit status is not consulted: ZAP exits non-zero when it has alerts, and a clean Trivy
+    report is an object with no `Results` in it, so only the shape of the file says it ran.
+    `warden --strict` reads its answer from here, so the gate and the report cannot disagree.
+    """
     return [scanner.label for scanner, raw_report in reports if scanner.reads_report(raw_report)]
 
 
@@ -84,13 +89,14 @@ def generate_report(
     *,
     report_dir: str | Path,
     output_file: str | Path,
-) -> Verdict:
+) -> tuple[Verdict, list[str]]:
+    """Write the report and print its summary; return the verdict and the report's `tools_run`."""
     findings, report = build_report(report_dir)
     write_report(output_file, report)
     print(f"Generated {output_file} with {len(findings)} issues.")
     verdict = judge(findings)
     print_summary(verdict=verdict, output_file=output_file)
-    return verdict
+    return verdict, report["summary"]["tools_run"]
 
 
 def _parse_args(argv: list[str] | None = None) -> AggregateCliOptions:
@@ -120,5 +126,5 @@ def _parse_args(argv: list[str] | None = None) -> AggregateCliOptions:
 def main(argv: list[str] | None = None) -> int:
     options = _parse_args(argv)
     print(f"--- Aggregating Reports from {options.report_dir} ---")
-    verdict = generate_report(report_dir=options.report_dir, output_file=options.output_file)
+    verdict, _ = generate_report(report_dir=options.report_dir, output_file=options.output_file)
     return 1 if verdict.failed else 0

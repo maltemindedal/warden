@@ -89,13 +89,13 @@ other process produced.
 A scanner that is missing or crashes does not abort the run or fail the build.
 This allows Warden to return results from the scanners that completed. It also
 means that a green build does not prove every scanner ran. `tools_run` records
-which scanners left a usable report. `--strict` opts into the opposite: after the
-verdict, `cli` holds against the run every scanner it started that left no report
-of the shape its parser reads and exits `3` unless a finding already made it
-`1`. `run_scanner` decides that shape once, from the same read that tidies the
-report, with `Scanner.reads_report`, and keeps the answer in
-`ToolRunResult.report_usable`. `aggregate` builds `tools_run` with the same
-method, so the report and `--strict` agree on which scanners ran.
+which scanners left a usable report: one of the shape its parser reads, which
+`Scanner.reads_report` decides. `--strict` opts into the opposite: after the
+verdict, `cli` holds against the run every scanner it started that `tools_run`
+leaves out, and exits `3` unless a finding already made it `1`.
+`aggregate.generate_report` returns `tools_run` beside the verdict for this, so
+the gate takes its answer from the one read that also feeds the report, and the
+two cannot disagree about which scanners ran.
 
 Warden handles an unreadable report the same way. This can happen when a tool
 crashes while writing the file, or when the file nests deeper than Python's JSON
