@@ -143,7 +143,10 @@ category, summary position, parser, command builder, accepted exit codes,
 whether it needs a target URL, and, for a scanner with no flag to skip paths,
 the report key that holds each finding's file path. Warden derives the `.warden.yaml` key from the
 label instead of storing both values. The constructor rejects a label that
-cannot be converted to a valid key.
+cannot be converted to a valid key. For the same reason no parser names its own
+tool: `Scanner.parse` hands the parser the record's label, and the parser tags
+each finding with it, so the `tool` a finding carries is the label the summary
+looks its category up by.
 
 `SCANNERS` stores those records in report order. Code that needs a scanner list
 reads this registry. This includes report cleanup, CLI stages, aggregation,

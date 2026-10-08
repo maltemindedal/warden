@@ -170,7 +170,9 @@ def test_a_report_that_is_absent_is_not_warned_about(
 
 
 def test_parse_zap_reports_unknown_file_without_an_instance_uri() -> None:
-    findings = parse_zap({"site": [{"alerts": [{"riskcode": "3", "alert": "No instances"}]}]})
+    findings = parse_zap(
+        {"site": [{"alerts": [{"riskcode": "3", "alert": "No instances"}]}]}, "ZAP"
+    )
 
     assert len(findings) == 1
     assert findings[0].file == "Unknown"

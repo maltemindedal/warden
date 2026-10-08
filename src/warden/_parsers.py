@@ -55,11 +55,11 @@ def _trivy_title(vulnerability: Mapping[str, object]) -> str:
     )
 
 
-def _build_trivy_finding(vulnerability: Mapping[str, object], target: str) -> Finding:
+def _build_trivy_finding(vulnerability: Mapping[str, object], target: str, tool: str) -> Finding:
     package_name = get_string(vulnerability, "PkgName") or "Unknown package"
     installed_version = get_string(vulnerability, "InstalledVersion") or "Unknown version"
     return Finding(
-        tool="Trivy",
+        tool=tool,
         severity=normalize_severity(vulnerability.get("Severity")),
         file=target,
         description=f"{package_name} {installed_version}: {_trivy_title(vulnerability)}",
@@ -67,7 +67,7 @@ def _build_trivy_finding(vulnerability: Mapping[str, object], target: str) -> Fi
     )
 
 
-def parse_trivy(raw_data: object | None) -> list[Finding]:
+def parse_trivy(raw_data: object | None, tool: str) -> list[Finding]:
     root = as_mapping(raw_data)
     if root is None:
         return []
@@ -76,11 +76,11 @@ def parse_trivy(raw_data: object | None) -> list[Finding]:
     for result in iter_mappings(root.get("Results")):
         target = get_string(result, "Target") or "Unknown"
         for vulnerability in iter_mappings(result.get("Vulnerabilities")):
-            findings.append(_build_trivy_finding(vulnerability, target))
+            findings.append(_build_trivy_finding(vulnerability, target, tool))
     return findings
 
 
-def parse_semgrep(raw_data: object | None) -> list[Finding]:
+def parse_semgrep(raw_data: object | None, tool: str) -> list[Finding]:
     root = as_mapping(raw_data)
     if root is None:
         return []
@@ -91,7 +91,7 @@ def parse_semgrep(raw_data: object | None) -> list[Finding]:
         start = as_mapping(result.get("start")) or {}
         findings.append(
             Finding(
-                tool="Semgrep",
+                tool=tool,
                 severity=normalize_severity(extra.get("severity")),
                 file=get_string(result, "path") or "Unknown",
                 line=get_int(start, "line"),
@@ -102,13 +102,13 @@ def parse_semgrep(raw_data: object | None) -> list[Finding]:
     return findings
 
 
-def parse_gitleaks(raw_data: object | None) -> list[Finding]:
+def parse_gitleaks(raw_data: object | None, tool: str) -> list[Finding]:
     findings: list[Finding] = []
     for leak in iter_mappings(raw_data):
         rule_id = get_string(leak, "RuleID") or "Unknown"
         findings.append(
             Finding(
-                tool="Gitleaks",
+                tool=tool,
                 severity="CRITICAL",
                 file=get_string(leak, "File") or "Unknown",
                 line=get_int(leak, "StartLine"),
@@ -127,9 +127,9 @@ def _zap_target_url(alert: Mapping[str, object]) -> str:
     return "Unknown"
 
 
-def _build_zap_finding(alert: Mapping[str, object]) -> Finding:
+def _build_zap_finding(alert: Mapping[str, object], tool: str) -> Finding:
     return Finding(
-        tool="ZAP",
+        tool=tool,
         severity=ZAP_RISK_MAP.get(str(alert.get("riskcode")), "UNKNOWN"),
         file=_zap_target_url(alert),
         description=get_string(alert, "alert") or "ZAP alert",
@@ -137,7 +137,7 @@ def _build_zap_finding(alert: Mapping[str, object]) -> Finding:
     )
 
 
-def parse_zap(raw_data: object | None) -> list[Finding]:
+def parse_zap(raw_data: object | None, tool: str) -> list[Finding]:
     root = as_mapping(raw_data)
     if root is None:
         return []
@@ -145,5 +145,5 @@ def parse_zap(raw_data: object | None) -> list[Finding]:
     findings: list[Finding] = []
     for site in iter_mappings(root.get("site")):
         for alert in iter_mappings(site.get("alerts")):
-            findings.append(_build_zap_finding(alert))
+            findings.append(_build_zap_finding(alert, tool))
     return findings

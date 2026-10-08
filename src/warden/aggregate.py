@@ -63,9 +63,7 @@ def detect_tools_run(reports: Sequence[tuple[Scanner, object | None]]) -> list[s
 
 def build_report(report_dir: str | Path) -> tuple[list[Finding], AggregateReportDict]:
     reports = _load_reports(Path(report_dir))
-    findings = [
-        finding for scanner, raw_report in reports for finding in scanner.parser(raw_report)
-    ]
+    findings = [finding for scanner, raw_report in reports for finding in scanner.parse(raw_report)]
     findings.sort(key=lambda finding: severity_rank(finding.severity))
     report: AggregateReportDict = {
         "summary": {
