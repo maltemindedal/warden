@@ -111,7 +111,7 @@ def test_every_scanner_runs_through_the_same_interface(tmp_path: Path) -> None:
         )
         result = tooling.run_scanner(scanner, request, runner)
         assert result.scanner is scanner
-        assert result.report_path == tmp_path.resolve() / scanner.report_file
+        assert request.report_path == tmp_path.resolve() / scanner.report_file
 
 
 def test_prepare_report_dir_clears_every_registered_report(tmp_path: Path) -> None:

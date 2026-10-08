@@ -97,7 +97,7 @@ PowerShell habits and POSIX shells. All four spellings set the same value.
 | Code | Meaning |
 | --- | --- |
 | `0` | No Critical or High findings. Printed as `PASS`. |
-| `1` | At least one Critical or High finding, printed as `FAIL`; or a path Warden owns cannot be used (`.security_reports` is a regular file, a report in it is a directory, `security_audit.json` is a directory), printed as `warden: error: ...` on stderr. |
+| `1` | At least one Critical or High finding, printed as `FAIL`; or a path Warden owns cannot be used (`.security_reports` is a regular file, a report in it is a directory, `security_audit.json` is a directory); or a report is more JSON than Python can parse (nested past about 1,000 levels on Python 3.11 or 10,000 from 3.12, or holding an integer of more than 4,300 digits), which may hold findings, reported once every scanner has run. Both of the last two are printed as `warden: error: ...` on stderr, and neither writes `security_audit.json`. |
 | `2` | Invalid arguments, including a `--project-root` that is not an existing directory. Nothing is scanned or written. |
 | `3` | Only with `--strict`: no finding failed the build, but a scanner that ran left no usable report, or no scanner ran. The report is still written. |
 
@@ -169,9 +169,11 @@ usage: warden-aggregate [-h] report_dir output_file
 | `report_dir` | Directory holding `trivy.json`, `semgrep.json`, `gitleaks.json`, and/or `zap.json`. It must exist; missing files in it are skipped. |
 | `output_file` | Path to write the aggregated report. Parent directories are created. |
 
-Exit codes match `warden`: `1` if any Critical or High finding is present,
-otherwise `0`, and `2` for invalid arguments, including a `report_dir` that is not
-an existing directory (nothing is written).
+Exit codes match `warden`: `1` if any Critical or High finding is present, or
+if a report is more JSON than Python can parse (printed as
+`warden-aggregate: error: ...` on stderr, and nothing is written), otherwise `0`,
+and `2` for invalid arguments, including a `report_dir` that is not an existing
+directory (nothing is written).
 
 ### Example
 

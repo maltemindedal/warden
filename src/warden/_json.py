@@ -13,6 +13,18 @@ class LoadedJson:
 
     data: object | None = None
     error: str | None = None
+    found: bool = False
+    """Whether the file was there: an absent file and one holding `null` both have no data."""
+
+
+class JsonLimitError(Exception):
+    """A file that is JSON, but more than this Python can parse.
+
+    `json.loads` gives up on nesting past the interpreter's recursion limit (around 1,000 levels on
+    Python 3.11, around 10,000 from 3.12) and on an integer of more than 4,300 digits. A report it
+    gives up on may hold findings, so this is raised rather than returned: a caller that does not
+    expect it stops the audit, which fails closed, instead of passing without those findings.
+    """
 
 
 def as_mapping(value: object) -> Mapping[str, object] | None:
@@ -66,14 +78,18 @@ def write_json(path: Path, data: object) -> None:
 def load_json(path: str | Path) -> LoadedJson:
     """A file that is absent is not an error; one that is present but unreadable is.
 
-    That includes one nested deeper than the interpreter can recurse, which `json.loads` meets
-    with a `RecursionError`: around 1,000 levels on Python 3.11, around 10,000 from 3.12.
+    One that is valid JSON but more than this Python can parse raises `JsonLimitError`.
     """
     file_path = Path(path)
     if not file_path.exists():
         return LoadedJson()
     try:
         raw_data: object = json.loads(file_path.read_text(encoding="utf-8"))
-    except (OSError, UnicodeDecodeError, json.JSONDecodeError, RecursionError) as error:
-        return LoadedJson(error=str(error))
-    return LoadedJson(data=raw_data)
+    except (OSError, UnicodeDecodeError, json.JSONDecodeError) as error:
+        return LoadedJson(error=str(error), found=True)
+    except (RecursionError, ValueError) as error:
+        # The decode errors above are `ValueError`s too, so what is left is the integer limit.
+        raise JsonLimitError(
+            f"{file_path.name} is more JSON than Python can parse ({error})"
+        ) from None
+    return LoadedJson(data=raw_data, found=True)

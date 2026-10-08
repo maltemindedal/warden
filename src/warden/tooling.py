@@ -4,12 +4,12 @@ import os
 import signal
 import stat
 import subprocess
-from collections.abc import Sequence
+from collections.abc import Iterator, Sequence
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Protocol, cast
 
-from ._json import as_mapping, get_string, load_json, write_json
+from ._json import JsonLimitError, as_mapping, get_string, load_json, write_json
 from ._models import CommandResult
 from ._scanners import SCANNERS, Scanner, ScanRequest
 
@@ -34,9 +34,10 @@ class ToolRunResult:
 
     scanner: Scanner
     returncode: int | None
-    report_path: Path
     report_written: bool
     warning: str | None = None
+    report_warning: str | None = None
+    """Why the report was left as the scanner wrote it, when it was."""
 
     @property
     def succeeded(self) -> bool:
@@ -240,47 +241,53 @@ indenting encoder cannot go past about 1,000 levels at all, which `json.loads` c
 
 
 def _nested_deeper_than(data: object, limit: int) -> bool:
-    """Whether `data` nests lists or objects deeper than `limit` levels, found without recursing."""
-    pending: list[tuple[object, int]] = [(data, 1)]
-    while pending:
-        value, depth = pending.pop()
-        if isinstance(value, dict):
-            children = cast(dict[str, object], value).values()
-        elif isinstance(value, list):
-            children = cast(list[object], value)
+    """Whether `data` nests lists or objects deeper than `limit` levels, found without recursing.
+
+    The walk keeps one iterator per level it is inside, so it holds at most `limit` of them
+    however many values the report has.
+    """
+    levels: list[Iterator[object]] = [iter((data,))]
+    while levels:
+        for value in levels[-1]:
+            if isinstance(value, dict):
+                children: Iterator[object] = iter(cast(dict[str, object], value).values())
+            elif isinstance(value, list):
+                children = iter(cast(list[object], value))
+            else:
+                continue
+            if len(levels) > limit:
+                return True
+            levels.append(children)
+            break
         else:
-            continue
-        if depth > limit:
-            return True
-        pending.extend((child, depth + 1) for child in children)
+            levels.pop()
     return False
 
 
 def _tidy_report(
     path: Path, *, path_key: str | None = None, exclude_dirs: Sequence[str] = ()
-) -> None:
+) -> str | None:
     """Pretty-print the report a scanner left, without the findings under `exclude_dirs`.
 
-    One that is absent or not JSON is left alone, and so is one nested deeper than
-    `_MAX_TIDY_DEPTH`, with a warning.
+    One that is absent or not JSON is left alone. So is one that is too deep to rewrite or more
+    than Python can parse, and for those what comes back says so. Either way the report keeps
+    every finding, those under `exclude_dirs` too: dropping one is never the safe way to be wrong.
+    The aggregator then fails the audit on one that Python cannot parse.
     """
-    if not path.exists():
-        return
-    loaded = load_json(path)
-    if loaded.error is not None:
-        return
+    try:
+        loaded = load_json(path)
+    except JsonLimitError as error:
+        return f"{error}: left as the scanner wrote it."
+    if not loaded.found or loaded.error is not None:
+        return None
     if _nested_deeper_than(loaded.data, _MAX_TIDY_DEPTH):
-        # Left as the scanner wrote it, the report keeps every finding, those under
-        # `exclude_dirs` too: dropping one is never the safe way to be wrong.
-        print(
-            f"Warning: {path.name} nests more than {_MAX_TIDY_DEPTH} levels deep: "
-            "left as the scanner wrote it."
-        )
-        return
+        depth = f"{path.name} nests more than {_MAX_TIDY_DEPTH} levels deep"
+        return f"{depth}: left as the scanner wrote it."
     raw_data = loaded.data
     if path_key is not None:
         raw_data = _without_excluded(raw_data, path_key, exclude_dirs)
     write_json(path, raw_data)
+    return None
 
 
 def scan_request(
@@ -324,11 +331,13 @@ def run_scanner(
         if command.on_timeout is not None:
             # Best effort: the container may be gone already, and only the attempt matters.
             runner(command.on_timeout, cwd=command.cwd, stderr_to_devnull=True, timeout=30)
-    _tidy_report(request.report_path, path_key=scanner.path_key, exclude_dirs=request.exclude_dirs)
+    report_warning = _tidy_report(
+        request.report_path, path_key=scanner.path_key, exclude_dirs=request.exclude_dirs
+    )
     return ToolRunResult(
         scanner=scanner,
         returncode=result.returncode,
-        report_path=request.report_path,
         report_written=request.report_path.exists(),
         warning=result.warning,
+        report_warning=report_warning,
     )

@@ -7,7 +7,7 @@ from pathlib import Path
 import pytest
 from pytest import CaptureFixture
 
-from warden._json import get_int, load_json
+from warden._json import JsonLimitError, get_int, load_json
 from warden._models import Finding, Severity
 from warden._parsers import normalize_severity, parse_zap
 from warden._scanners import SCANNERS
@@ -15,6 +15,10 @@ from warden._summary import judge, print_summary
 from warden.aggregate import build_report, main
 
 FIXTURE_DIR = Path(__file__).parent / "fixtures"
+TOO_DEEP = "[" * 100_000 + "]" * 100_000
+"""Nested past the recursion limit of every Python Warden supports (about 10,000 from 3.12)."""
+TOO_LONG = "9" * 5_000
+"""An integer past the 4,300 digits `json.loads` will convert."""
 
 
 @pytest.fixture(autouse=True)
@@ -76,6 +80,7 @@ def test_load_json_returns_the_parsed_document_when_the_file_is_valid(tmp_path: 
 
     assert loaded.data == {"Results": []}
     assert loaded.error is None
+    assert loaded.found
 
 
 def test_load_json_reports_a_parse_failure_as_a_value(tmp_path: Path) -> None:
@@ -86,6 +91,7 @@ def test_load_json_reports_a_parse_failure_as_a_value(tmp_path: Path) -> None:
 
     assert loaded.data is None
     assert loaded.error
+    assert loaded.found
 
 
 def test_load_json_treats_a_missing_file_as_neither_data_nor_error(tmp_path: Path) -> None:
@@ -93,6 +99,29 @@ def test_load_json_treats_a_missing_file_as_neither_data_nor_error(tmp_path: Pat
 
     assert loaded.data is None
     assert loaded.error is None
+    assert not loaded.found
+
+
+def test_load_json_tells_a_report_holding_null_from_an_absent_one(tmp_path: Path) -> None:
+    """Both have no data, and only the absent one is a scanner that wrote nothing."""
+    report = tmp_path / "zap.json"
+    report.write_text("null", encoding="utf-8")
+
+    loaded = load_json(report)
+
+    assert (loaded.data, loaded.error, loaded.found) == (None, None, True)
+
+
+@pytest.mark.parametrize(
+    "text", [TOO_DEEP, '{"line": ' + TOO_LONG + "}"], ids=["too-deep", "too-long"]
+)
+def test_load_json_raises_on_json_more_than_python_can_parse(tmp_path: Path, text: str) -> None:
+    """Such a report may hold findings, so it cannot be returned as a warning to read past."""
+    report = tmp_path / "semgrep.json"
+    report.write_text(text, encoding="utf-8")
+
+    with pytest.raises(JsonLimitError, match="semgrep.json is more JSON than Python can parse"):
+        load_json(report)
 
 
 def test_build_report_reads_all_supported_tools(tmp_path: Path) -> None:
@@ -159,21 +188,24 @@ def test_a_report_that_is_not_the_shape_its_scanner_writes_is_left_out_of_tools_
     ) in capsys.readouterr().out
 
 
-def test_a_report_nested_too_deeply_to_read_is_a_warning_not_a_traceback(
-    tmp_path: Path, capsys: CaptureFixture[str]
+@pytest.mark.parametrize("value", [TOO_DEEP, TOO_LONG], ids=["too-deep", "too-long"])
+def test_a_report_more_than_python_can_parse_fails_the_audit_without_a_traceback(
+    tmp_path: Path, capsys: CaptureFixture[str], value: str
 ) -> None:
-    """`json.loads` raised `RecursionError`, which `load_json` did not catch: `warden-aggregate`
-    stopped with a traceback and wrote nothing. 100,000 levels is past every Python's limit."""
-    (tmp_path / "semgrep.json").write_text(
-        '{"results": ' + "[" * 100_000 + "]" * 100_000 + "}", encoding="utf-8"
+    """`json.loads` raised out of `warden-aggregate`, which fails closed but is a traceback. Read
+    as a warning instead, the report's findings were dropped and the audit passed: a secret beside
+    a field nested too deep went unreported. It is neither now: the audit fails, saying why."""
+    leak = '[{"RuleID": "aws-key", "File": "src/key.py", "StartLine": 1, "Extra": ' + value + "}]"
+    (tmp_path / "gitleaks.json").write_text(leak, encoding="utf-8")
+    output = tmp_path / "out" / "security_audit.json"
+
+    exit_code = main([str(tmp_path), str(output)])
+
+    assert exit_code == 1
+    assert not output.exists()
+    assert "warden-aggregate: error: gitleaks.json is more JSON than Python can parse" in (
+        capsys.readouterr().err
     )
-    _copy_fixture("gitleaks.json", tmp_path)
-
-    findings, report = build_report(tmp_path)
-
-    assert report["summary"]["tools_run"] == ["Gitleaks"]
-    assert [finding.tool for finding in findings] == ["Gitleaks"]
-    assert "Warning: Could not parse semgrep.json:" in capsys.readouterr().out
 
 
 def test_a_report_that_is_absent_is_not_warned_about(

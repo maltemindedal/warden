@@ -526,7 +526,8 @@ def test_what_a_timed_out_scanner_left_behind_is_not_kept_as_its_report(tmp_path
     result = _run(TRIVY, tmp_path, runner, timeout=5)
 
     assert runner.commands[0].timeout == 5
-    assert not result.report_path.exists()
+    assert not result.report_written
+    assert not (tmp_path / "trivy.json").exists()
 
 
 def test_a_scanner_that_is_missing_warns_instead_of_raising(tmp_path: Path) -> None:
@@ -598,7 +599,7 @@ def test_a_report_holding_a_lone_surrogate_is_tidied_and_reads_back_the_same(
 
 @pytest.mark.parametrize(("depth", "rewritten"), [(100, True), (101, False)])
 def test_a_report_nested_past_100_levels_is_left_as_the_scanner_wrote_it(
-    tmp_path: Path, capsys: pytest.CaptureFixture[str], depth: int, rewritten: bool
+    tmp_path: Path, depth: int, rewritten: bool
 ) -> None:
     """Indenting a report grows it with the square of its depth: on Python 3.13 an 18 KB report
     nested 9,000 deep became 162 MB, and on 3.12 the rewrite raised past about 1,000 levels.
@@ -606,10 +607,28 @@ def test_a_report_nested_past_100_levels_is_left_as_the_scanner_wrote_it(
     nested = "[" * (depth - 2) + "]" * (depth - 2)
     text = '[{"RuleID": "r", "File": "vendor/key.pem", "Extra": ' + nested + "}]"
 
-    _run(GITLEAKS, tmp_path, RecordingRunner(report_text=text), exclude_dirs=["vendor"])
+    result = _run(GITLEAKS, tmp_path, RecordingRunner(report_text=text), exclude_dirs=["vendor"])
 
     assert (tmp_path / "gitleaks.json").read_text(encoding="utf-8") == ("[]" if rewritten else text)
-    assert ("nests more than 100 levels deep" in capsys.readouterr().out) is not rewritten
+    assert result.report_warning == (
+        None
+        if rewritten
+        else "gitleaks.json nests more than 100 levels deep: left as the scanner wrote it."
+    )
+
+
+def test_a_report_more_than_python_can_parse_is_left_as_written_for_the_aggregator(
+    tmp_path: Path,
+) -> None:
+    """`json.loads` raised out of the rewrite, which stopped the audit before the next scanner.
+    The report is left as written instead, and the aggregator fails the audit on it."""
+    text = '{"Results": [], "SchemaVersion": ' + "9" * 5_000 + "}"
+
+    result = _run(TRIVY, tmp_path, RecordingRunner(report_text=text))
+
+    assert (tmp_path / "trivy.json").read_text(encoding="utf-8") == text
+    assert result.report_warning is not None
+    assert result.report_warning.startswith("trivy.json is more JSON than Python can parse")
 
 
 def test_a_gitleaks_report_with_every_finding_excluded_still_counts_as_run(tmp_path: Path) -> None:

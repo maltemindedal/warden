@@ -8,7 +8,11 @@ A scan produces two kinds of output:
   `REDACTED` in place of each matched secret. Trivy runs with `--scanners vuln`, so `trivy.json` holds
   vulnerabilities only. A report nested more than 100 levels deep is left exactly
   as the scanner wrote it, with a warning, and no findings are removed from it:
-  the reports these scanners write nest far less deeply.
+  the reports these scanners write nest far less deeply. One that is more JSON
+  than Python can parse (nested past about 1,000 levels on Python 3.11 or 10,000
+  from 3.12, or holding an integer of more than 4,300 digits) is left as written
+  too, and the audit then fails with exit `1` rather than pass without the
+  findings it may hold.
 - `security_audit.json` contains the merged report described here.
 
 Warden writes both as UTF-8 with non-ASCII text left as it is. The one exception

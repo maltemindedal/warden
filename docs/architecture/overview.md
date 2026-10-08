@@ -38,7 +38,7 @@ All under `src/warden/`.
 | `aggregate.py` | Assembles the report from the parsed findings and writes it. Also the `warden-aggregate` entry point. |
 | `_parsers.py` | Turns each tool's JSON into `Finding` records and normalises severities. |
 | `_summary.py` | Creates a `Verdict` with counts, a category breakdown, and the build result, then prints its terminal table. |
-| `_json.py` | Type-narrowing helpers for walking untrusted JSON, and the reader and writer of JSON files. A file it cannot parse comes back as an error, not a printed warning, and text UTF-8 cannot encode (a lone surrogate) is written as its escape rather than raising. |
+| `_json.py` | Type-narrowing helpers for walking untrusted JSON, and the reader and writer of JSON files. A file it cannot parse comes back as an error, not a printed warning; one that is valid JSON but more than Python can parse raises `JsonLimitError`; and text UTF-8 cannot encode (a lone surrogate) is written as its escape rather than raising. |
 | `_scanners.py` | One `Scanner` record per tool Warden knows about, the registry of them, and the code that builds each one's command line. |
 | `_models.py` | Shared dataclasses, typed dicts, and constants. No logic. |
 
@@ -98,15 +98,23 @@ the gate takes its answer from the one read that also feeds the report, and the
 two cannot disagree about which scanners ran.
 
 Warden handles an unreadable report the same way. This can happen when a tool
-crashes while writing the file, or when the file nests deeper than Python's JSON
-parser can recurse (about 1,000 levels on 3.11, 10,000 from 3.12). `load_json`
-returns a `LoadedJson` containing either the parsed data or the read error. It
-does not print to the terminal, so tests can assert on the error value.
-`aggregate` prints the error because it iterates over `SCANNERS` and knows which
-scanner owns the file. Warden omits the scanner's findings and name from
-`tools_run`, then continues. A report that parses but is not the shape its
-scanner writes is handled the same way: its parser finds nothing in it,
-`aggregate` warns, and the scanner is left out of `tools_run`.
+crashes while writing the file. `load_json` returns a `LoadedJson` containing
+either the parsed data or the read error. It does not print to the terminal, so
+tests can assert on the error value. `aggregate` prints the error because it
+iterates over `SCANNERS` and knows which scanner owns the file. Warden omits the
+scanner's findings and name from `tools_run`, then continues. A report that
+parses but is not the shape its scanner writes is handled the same way: its
+parser finds nothing in it, `aggregate` warns, and the scanner is left out of
+`tools_run`.
+
+A report that is valid JSON but more than Python can parse is the exception.
+`json.loads` gives up on nesting past the recursion limit (about 1,000 levels on
+3.11, 10,000 from 3.12) and on an integer of more than 4,300 digits, and such a
+report may hold findings, so `load_json` raises `JsonLimitError` rather than
+return a warning. `_tidy_report` leaves the report as written so the remaining
+scanners still run; the aggregator does not catch it, and `cli` turns it into
+`warden: error: ...` and exit `1`. The audit fails closed without a traceback,
+and a caller that forgets to handle the error still fails closed.
 
 ### Only Critical and High fail the build
 

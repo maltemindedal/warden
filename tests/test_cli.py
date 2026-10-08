@@ -413,20 +413,47 @@ def test_a_report_holding_a_lone_surrogate_does_not_stop_the_audit(
     assert "AUDIT FAILED!" in capsys.readouterr().out
 
 
-@pytest.mark.parametrize("depth", [2_000, 100_000])
-def test_a_deeply_nested_report_does_not_stop_the_audit(tmp_path: Path, depth: int) -> None:
-    """A report nested past the recursion limit raised out of `json.loads`, and on Python 3.12
-    out of the rewrite, which reads ten times deeper than it indents: the audit stopped there.
-    2,000 levels can be read from 3.12 on, and 100,000 by no Python."""
-    semgrep_report = '{"results": [' + "[" * depth + "]" * depth + "]}"
+@pytest.mark.parametrize(
+    "value", ["[" * 100_000 + "]" * 100_000, "9" * 5_000], ids=["too-deep", "too-long"]
+)
+def test_a_report_more_than_python_can_parse_fails_the_audit_after_every_scanner_ran(
+    tmp_path: Path, capsys: CaptureFixture[str], value: str
+) -> None:
+    """`json.loads` raised out of the rewrite, so the scanners after this one never ran. Read as
+    a warning instead, the report's findings were dropped and the audit passed, `--strict` or not:
+    a secret beside a field nested too deep went unreported. Now every scanner runs, and the audit
+    fails saying why. 100,000 levels is past every Python's limit, and 5,000 digits too."""
+    leak = '[{"RuleID": "aws-key", "File": "src/key.py", "StartLine": 1, "Extra": ' + value + "}]"
+    runner = RecordingRunner(report_texts={**USABLE_REPORTS, "gitleaks.json": leak})
+
+    exit_code = cli.main(["--project-root", str(tmp_path)], runner=runner)
+
+    captured = capsys.readouterr()
+    assert exit_code == 1
+    assert len(runner.commands) == 3
+    assert "PASS" not in captured.out
+    assert "   -> Warning: gitleaks.json is more JSON than Python can parse" in captured.out
+    assert "warden: error: gitleaks.json is more JSON than Python can parse" in captured.err
+
+
+def test_a_report_too_deep_to_rewrite_is_still_read_and_counted(
+    tmp_path: Path, capsys: CaptureFixture[str]
+) -> None:
+    """Past 100 levels a report is left as the scanner wrote it, and Python still parses one 200
+    deep on every version: so the run counts it, and says so in the scanner's own stage."""
+    semgrep_report = '{"results": [' + "[" * 200 + "]" * 200 + "]}"
     runner = RecordingRunner(report_texts={**USABLE_REPORTS, "semgrep.json": semgrep_report})
 
     exit_code = _strict(tmp_path, runner)
 
     report = json.loads((tmp_path / "security_audit.json").read_text(encoding="utf-8"))
-    counted = "Semgrep" in report["summary"]["tools_run"]
-    assert len(runner.commands) == 3
-    assert exit_code == (0 if counted else cli.EXIT_INCOMPLETE)
+    assert exit_code == 0
+    assert report["summary"]["tools_run"] == ["Trivy", "Semgrep", "Gitleaks"]
+    assert (
+        "[2/4] Running Semgrep...\n   -> Done.\n"
+        "   -> Warning: semgrep.json nests more than 100 levels deep: "
+        "left as the scanner wrote it.\n"
+    ) in capsys.readouterr().out
 
 
 def test_strict_counts_a_report_whose_scanner_exited_non_zero_because_it_had_alerts(

@@ -8,6 +8,7 @@ from pathlib import Path
 from typing import cast
 
 from . import aggregate, config, tooling
+from ._json import JsonLimitError
 from ._models import CliOptions, ResolvedConfig
 from ._scanners import SCANNERS, Scanner, rewrite_zap_target, url_problem
 from ._text import shown
@@ -91,12 +92,19 @@ def _describe(error: OSError) -> str:
 
 
 def _fail(message: str) -> int:
-    """A path the project controls that Warden cannot use: a failed run, not a traceback."""
+    """A path or a report the project controls that Warden cannot use: a failed run, not a
+    traceback."""
     print(f"warden: error: {message}", file=sys.stderr)
     return 1
 
 
 def _print_result(result: tooling.ToolRunResult) -> None:
+    _print_status(result)
+    if result.report_warning is not None:
+        print(f"   -> Warning: {result.report_warning}")
+
+
+def _print_status(result: tooling.ToolRunResult) -> None:
     if result.returncode is None and result.warning is not None:
         print(f"   -> Warning: {result.warning}")
         return
@@ -216,6 +224,8 @@ def run_audit(options: CliOptions, *, runner: tooling.CommandRunner) -> int:
         )
     except OSError as error:
         return _fail(f"cannot read the reports or write {output_file.name}: {_describe(error)}")
+    except JsonLimitError as error:
+        return _fail(f"{error}, {aggregate.FAILS_CLOSED}")
     incomplete = _incomplete(attempted, tools_run, skipped_for_url) if options.strict else None
     if incomplete is not None:
         print(f"\nSTRICT: {incomplete}")
