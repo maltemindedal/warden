@@ -49,10 +49,13 @@ ZAP also writes `zap.html`, which is not read by the aggregator.
 | Field | Type | Meaning |
 | --- | --- | --- |
 | `total_issues` | integer | Number of entries in `findings`. |
-| `tools_run` | array of strings | Tools whose report file was present and parsable. |
+| `tools_run` | array of strings | Tools whose report file was present, parsable, and of the shape the tool writes: a JSON object for Trivy, Semgrep and ZAP, an array for Gitleaks. |
 
-`tools_run` reflects which reports were *found*, not which tools were enabled. A
-tool that was enabled but crashed before writing its report will be absent.
+`tools_run` reflects which usable reports were *found*, not which tools were
+enabled, and names the same tools that `warden --strict` counts as having run. A
+tool that was enabled but crashed before writing its report will be absent. So
+will one whose report is not JSON or not of its shape, and for those the
+aggregator prints a warning naming the file.
 
 ### `findings`
 

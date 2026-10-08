@@ -128,6 +128,47 @@ def test_build_report_warns_about_a_report_it_could_not_parse(
     assert "Warning: Could not parse trivy.json:" in capsys.readouterr().out
 
 
+@pytest.mark.parametrize(
+    ("report_file", "text", "shape", "label"),
+    [
+        ("trivy.json", "[]", "object", "Trivy"),
+        ("semgrep.json", '"results"', "object", "Semgrep"),
+        ("gitleaks.json", "{}", "array", "Gitleaks"),
+        ("zap.json", "null", "object", "ZAP"),
+    ],
+)
+def test_a_report_that_is_not_the_shape_its_scanner_writes_is_left_out_of_tools_run(
+    tmp_path: Path,
+    capsys: CaptureFixture[str],
+    report_file: str,
+    text: str,
+    shape: str,
+    label: str,
+) -> None:
+    """`tools_run` once listed any report that parsed as JSON, so a Trivy `[]` read as Trivy
+    having run while `--strict` held it against the run and no finding could come from it."""
+    (tmp_path / report_file).write_text(text, encoding="utf-8")
+
+    findings, report = build_report(tmp_path)
+
+    assert report["summary"]["tools_run"] == []
+    assert findings == []
+    assert (
+        f"Warning: {report_file} is not the JSON {shape} {label} writes, "
+        f"so {label} is left out of tools_run."
+    ) in capsys.readouterr().out
+
+
+def test_a_report_that_is_absent_is_not_warned_about(
+    tmp_path: Path, capsys: CaptureFixture[str]
+) -> None:
+    """A disabled scanner writes no report, and that is not worth a warning."""
+    _, report = build_report(tmp_path)
+
+    assert report["summary"]["tools_run"] == []
+    assert "Warning" not in capsys.readouterr().out
+
+
 def test_parse_zap_reports_unknown_file_without_an_instance_uri() -> None:
     findings = parse_zap({"site": [{"alerts": [{"riskcode": "3", "alert": "No instances"}]}]})
 

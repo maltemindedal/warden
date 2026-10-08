@@ -35,7 +35,8 @@ def test_cli_uses_cli_url_for_zap(tmp_path: Path) -> None:
         'target_url: "http://from-config"\n',
         encoding="utf-8",
     )
-    runner = RecordingRunner(report_text="{}")
+    # Each report in the shape its scanner writes, so that all four count as run.
+    runner = RecordingRunner(report_text="{}", report_texts={"gitleaks.json": "[]"})
 
     exit_code = cli.main(
         ["--project-root", str(tmp_path), "--url", "http://from-cli"],
@@ -373,6 +374,23 @@ def test_strict_needs_the_shape_each_scanner_writes(
 
     assert exit_code == cli.EXIT_INCOMPLETE
     assert f"STRICT: {wrong} did not produce a usable report" in capsys.readouterr().out
+
+
+def test_tools_run_names_the_scanners_that_strict_counts_as_run(
+    tmp_path: Path, capsys: CaptureFixture[str]
+) -> None:
+    """The report and the gate must agree: a scanner `--strict` holds against the run is not one
+    `security_audit.json` says ran. A Trivy `[]` and a Gitleaks `{}` were both listed."""
+    runner = RecordingRunner(
+        report_texts={**USABLE_REPORTS, "trivy.json": "[]", "gitleaks.json": "{}"}
+    )
+
+    exit_code = _strict(tmp_path, runner)
+
+    report = json.loads((tmp_path / "security_audit.json").read_text(encoding="utf-8"))
+    assert exit_code == cli.EXIT_INCOMPLETE
+    assert report["summary"]["tools_run"] == ["Semgrep"]
+    assert "STRICT: Trivy, Gitleaks did not produce a usable report" in capsys.readouterr().out
 
 
 def test_strict_counts_a_report_whose_scanner_exited_non_zero_because_it_had_alerts(

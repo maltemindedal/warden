@@ -39,18 +39,26 @@ def finding_to_dict(finding: Finding) -> FindingDict:
 
 
 def _load_reports(report_dir: Path) -> list[tuple[Scanner, object | None]]:
-    """Read every scanner's report, warning about any that is present but unparsable."""
+    """Read every scanner's report, warning about any that is present but unusable."""
     reports: list[tuple[Scanner, object | None]] = []
     for scanner in SCANNERS:
-        loaded = load_json(report_dir / scanner.report_file)
+        path = report_dir / scanner.report_file
+        loaded = load_json(path)
         if loaded.error is not None:
             print(f"Warning: Could not parse {scanner.report_file}: {loaded.error}")
+        elif not scanner.reads_report(loaded.data) and path.exists():
+            shape = "array" if scanner.report_is_array else "object"
+            print(
+                f"Warning: {scanner.report_file} is not the JSON {shape} {scanner.label} writes, "
+                f"so {scanner.label} is left out of tools_run."
+            )
         reports.append((scanner, loaded.data))
     return reports
 
 
 def detect_tools_run(reports: Sequence[tuple[Scanner, object | None]]) -> list[str]:
-    return [scanner.label for scanner, raw_report in reports if raw_report is not None]
+    """The scanners whose report has the shape their parser reads, as `--strict` counts them."""
+    return [scanner.label for scanner, raw_report in reports if scanner.reads_report(raw_report)]
 
 
 def build_report(report_dir: str | Path) -> tuple[list[Finding], AggregateReportDict]:

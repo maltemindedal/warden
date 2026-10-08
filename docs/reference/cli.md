@@ -70,7 +70,9 @@ PowerShell habits and POSIX shells. All four spellings set the same value.
   exits non-zero when it has alerts and still writes its report; a clean scan is
   still a report. A run in which every scanner is disabled or skipped fails the same
   way (`STRICT: no scanner ran`). Findings win: a Critical or High finding is still
-  exit `1`, and the `STRICT:` line is printed as well. Scanners you turned off in
+  exit `1`, and the `STRICT:` line is printed as well. With or without the flag,
+  `tools_run` in the report lists the scanners this check counts as having run
+  (see [Report format](report-format.md#summary)). Scanners you turned off in
   `.warden.yaml` are not held against the run. It is a flag and not a config key on
   purpose: an older Warden rejects an unknown flag, where it would ignore an unknown
   key and quietly run without the check.
