@@ -1,12 +1,11 @@
 from __future__ import annotations
 
 import argparse
-import json
 from collections.abc import Sequence
 from pathlib import Path
 from typing import cast
 
-from ._json import load_json
+from ._json import load_json, write_json
 from ._models import (
     AggregateCliOptions,
     AggregateReportDict,
@@ -78,7 +77,7 @@ def build_report(report_dir: str | Path) -> tuple[list[Finding], AggregateReport
 def write_report(output_file: str | Path, report: AggregateReportDict) -> None:
     output_path = Path(output_file)
     output_path.parent.mkdir(parents=True, exist_ok=True)
-    output_path.write_text(json.dumps(report, indent=2, ensure_ascii=False), encoding="utf-8")
+    write_json(output_path, report)
 
 
 def generate_report(

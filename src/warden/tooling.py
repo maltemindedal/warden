@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import json
 import os
 import signal
 import stat
@@ -10,7 +9,7 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Protocol, cast
 
-from ._json import LoadedJson, as_mapping, get_string, load_json
+from ._json import LoadedJson, as_mapping, get_string, load_json, write_json
 from ._models import CommandResult
 from ._scanners import SCANNERS, Scanner, ScanRequest
 
@@ -252,7 +251,7 @@ def _tidy_report(
     raw_data = loaded.data
     if path_key is not None:
         raw_data = _without_excluded(raw_data, path_key, exclude_dirs)
-    path.write_text(json.dumps(raw_data, indent=2, ensure_ascii=False), encoding="utf-8")
+    write_json(path, raw_data)
     return LoadedJson(data=raw_data)
 
 

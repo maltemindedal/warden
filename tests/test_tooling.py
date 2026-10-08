@@ -592,6 +592,22 @@ def test_a_run_records_whether_it_left_a_report_and_whether_its_parser_reads_it(
     assert (result.report_written, result.report_usable) == (written, usable)
 
 
+def test_a_report_holding_a_lone_surrogate_is_tidied_and_reads_back_the_same(
+    tmp_path: Path,
+) -> None:
+    """A `\\udcff` escape (a file name that is not UTF-8, as Python writes one) has no UTF-8
+    encoding: rewriting the report raised mid-write, left it empty and stopped the audit."""
+    report = (
+        r'{"results": [{"check_id": "r", "path": "bad\udcff.py", "start": {"line": 1}, '
+        r'"extra": {"severity": "ERROR", "message": "m"}}]}'
+    )
+
+    result = _run(SEMGREP, tmp_path, RecordingRunner(report_text=report))
+
+    assert result.report_usable
+    assert json.loads((tmp_path / "semgrep.json").read_text(encoding="utf-8")) == json.loads(report)
+
+
 def test_a_gitleaks_report_with_every_finding_excluded_is_still_usable(tmp_path: Path) -> None:
     """Filtering `exclude_dirs` out of the report must leave the shape `--strict` looks for."""
     runner = RecordingRunner(report_text='[{"RuleID": "r", "File": "vendor/key.pem"}]')

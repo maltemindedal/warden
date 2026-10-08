@@ -9,6 +9,11 @@ A scan produces two kinds of output:
   vulnerabilities only.
 - `security_audit.json` contains the merged report described here.
 
+Warden writes both as UTF-8 with non-ASCII text left as it is. The one exception
+is a lone surrogate, such as the `\udcff` escape a Python tool writes for a file
+name that is not UTF-8. UTF-8 cannot encode it, so Warden writes it back as the
+same `\uXXXX` escape it was read from.
+
 ## Input files
 
 The aggregator looks for these exact filenames in the report directory. Missing

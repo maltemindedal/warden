@@ -393,6 +393,26 @@ def test_tools_run_names_the_scanners_that_strict_counts_as_run(
     assert "STRICT: Trivy, Gitleaks did not produce a usable report" in capsys.readouterr().out
 
 
+def test_a_report_holding_a_lone_surrogate_does_not_stop_the_audit(
+    tmp_path: Path, capsys: CaptureFixture[str]
+) -> None:
+    """Tidying such a report raised, so Gitleaks never ran and no `security_audit.json` was written,
+    and the run ended in a traceback rather than a verdict."""
+    semgrep_report = (
+        r'{"results": [{"check_id": "r", "path": "bad\udcff.py", "start": {"line": 1}, '
+        r'"extra": {"severity": "ERROR", "message": "m"}}]}'
+    )
+    runner = RecordingRunner(report_texts={**USABLE_REPORTS, "semgrep.json": semgrep_report})
+
+    exit_code = _strict(tmp_path, runner)
+
+    report = json.loads((tmp_path / "security_audit.json").read_text(encoding="utf-8"))
+    assert exit_code == 1
+    assert len(runner.commands) == 3
+    assert report["summary"]["tools_run"] == ["Trivy", "Semgrep", "Gitleaks"]
+    assert "AUDIT FAILED!" in capsys.readouterr().out
+
+
 def test_strict_counts_a_report_whose_scanner_exited_non_zero_because_it_had_alerts(
     tmp_path: Path,
 ) -> None:

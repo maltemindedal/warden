@@ -38,7 +38,7 @@ All under `src/warden/`.
 | `aggregate.py` | Assembles the report from the parsed findings and writes it. Also the `warden-aggregate` entry point. |
 | `_parsers.py` | Turns each tool's JSON into `Finding` records and normalises severities. |
 | `_summary.py` | Creates a `Verdict` with counts, a category breakdown, and the build result, then prints its terminal table. |
-| `_json.py` | Type-narrowing helpers for walking untrusted JSON. A file it cannot parse comes back as an error, not a printed warning. |
+| `_json.py` | Type-narrowing helpers for walking untrusted JSON, and the reader and writer of JSON files. A file it cannot parse comes back as an error, not a printed warning, and text UTF-8 cannot encode (a lone surrogate) is written as its escape rather than raising. |
 | `_scanners.py` | One `Scanner` record per tool Warden knows about, the registry of them, and the code that builds each one's command line. |
 | `_models.py` | Shared dataclasses, typed dicts, and constants. No logic. |
 

@@ -169,6 +169,24 @@ def test_a_report_that_is_absent_is_not_warned_about(
     assert "Warning" not in capsys.readouterr().out
 
 
+def test_a_finding_whose_file_holds_a_lone_surrogate_is_written_to_the_report(
+    tmp_path: Path,
+) -> None:
+    """`warden-aggregate` raised writing such a finding and left `security_audit.json` empty."""
+    (tmp_path / "semgrep.json").write_text(
+        r'{"results": [{"check_id": "r", "path": "bad\udcff.py", "start": {"line": 1}, '
+        r'"extra": {"severity": "ERROR", "message": "m"}}]}',
+        encoding="utf-8",
+    )
+    output = tmp_path / "security_audit.json"
+
+    exit_code = main([str(tmp_path), str(output)])
+
+    report = json.loads(output.read_text(encoding="utf-8"))
+    assert exit_code == 1
+    assert [finding["file"] for finding in report["findings"]] == ["bad\udcff.py"]
+
+
 def test_parse_zap_reports_unknown_file_without_an_instance_uri() -> None:
     findings = parse_zap(
         {"site": [{"alerts": [{"riskcode": "3", "alert": "No instances"}]}]}, "ZAP"

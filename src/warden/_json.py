@@ -51,6 +51,18 @@ def get_int(mapping: Mapping[str, object], key: str) -> int | None:
     return None
 
 
+def write_json(path: Path, data: object) -> None:
+    """Write `data` as indented JSON, with non-ASCII text left readable rather than escaped.
+
+    A lone surrogate, which a report can hold as a `\\udcff` escape, has no UTF-8 encoding, and
+    writing it as is would raise halfway through the write and leave the file empty. It is written
+    back as the same escape instead, which reads back as the same string: `json.dumps` only puts
+    one inside a string, where that escape is valid JSON.
+    """
+    text = json.dumps(data, indent=2, ensure_ascii=False)
+    path.write_text(text, encoding="utf-8", errors="backslashreplace")
+
+
 def load_json(path: str | Path) -> LoadedJson:
     """A file that is absent is not an error; one that is present but unreadable is."""
     file_path = Path(path)
