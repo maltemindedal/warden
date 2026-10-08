@@ -53,15 +53,52 @@ def test_summary_categories_are_read_from_the_registry() -> None:
     assert verdict.breakdown["HIGH"] == {scanner.category: 1 for scanner in SCANNERS}
 
 
-def test_each_parser_tags_its_findings_with_its_scanner_label() -> None:
+def test_each_scanner_tags_its_findings_with_its_own_label() -> None:
+    """The summary looks a finding's category up by its `tool`, so that must be the label."""
     for scanner in SCANNERS:
         raw_report: object = json.loads(
             (FIXTURE_DIR / scanner.report_file).read_text(encoding="utf-8")
         )
 
-        findings = scanner.parser(raw_report)
+        findings = scanner.parse(raw_report)
 
         assert {finding.tool for finding in findings} == {scanner.label}
+
+
+def test_no_parser_names_its_own_tool() -> None:
+    """Each parser once wrote its tool's name into its findings, a second copy of the label.
+
+    A parser that still did would pass the test above, where the two names agree, and drift
+    from the record the first time a label changed: so parse under a label no tool has.
+    """
+    for scanner in SCANNERS:
+        raw_report: object = json.loads(
+            (FIXTURE_DIR / scanner.report_file).read_text(encoding="utf-8")
+        )
+
+        findings = scanner.parser(raw_report, "Renamed")
+
+        assert findings
+        assert {finding.tool for finding in findings} == {"Renamed"}
+
+
+def test_each_scanner_reads_the_shape_of_its_own_fixture_report() -> None:
+    """`tools_run`, and `--strict` through it, judge a report by `Scanner.reads_report`, while
+    the parser walks it on its own.
+
+    A report the parser takes findings from must count as a usable one, or a run that worked
+    would be held against the build: the record's `report_is_array` has to agree with the parser.
+    """
+    for scanner in SCANNERS:
+        raw_report: object = json.loads(
+            (FIXTURE_DIR / scanner.report_file).read_text(encoding="utf-8")
+        )
+        other_shape: object = {} if isinstance(raw_report, list) else []
+
+        assert scanner.parse(raw_report)
+        assert scanner.reads_report(raw_report)
+        assert not scanner.reads_report(other_shape)
+        assert not scanner.reads_report(None)
 
 
 def test_every_scanner_runs_through_the_same_interface(tmp_path: Path) -> None:
@@ -73,9 +110,8 @@ def test_every_scanner_runs_through_the_same_interface(tmp_path: Path) -> None:
             scanner, project_root=tmp_path, report_dir=tmp_path, url="http://example.test"
         )
         result = tooling.run_scanner(scanner, request, runner)
-        assert result.name == scanner.label
-        assert result.report_path == tmp_path.resolve() / scanner.report_file
-        assert result.accepted_returncodes == scanner.accepted_returncodes
+        assert result.scanner is scanner
+        assert request.report_path == tmp_path.resolve() / scanner.report_file
 
 
 def test_prepare_report_dir_clears_every_registered_report(tmp_path: Path) -> None:

@@ -35,7 +35,8 @@ def test_cli_uses_cli_url_for_zap(tmp_path: Path) -> None:
         'target_url: "http://from-config"\n',
         encoding="utf-8",
     )
-    runner = RecordingRunner(report_text="{}")
+    # Each report in the shape its scanner writes, so that all four count as run.
+    runner = RecordingRunner(report_text="{}", report_texts={"gitleaks.json": "[]"})
 
     exit_code = cli.main(
         ["--project-root", str(tmp_path), "--url", "http://from-cli"],
@@ -373,6 +374,86 @@ def test_strict_needs_the_shape_each_scanner_writes(
 
     assert exit_code == cli.EXIT_INCOMPLETE
     assert f"STRICT: {wrong} did not produce a usable report" in capsys.readouterr().out
+
+
+def test_tools_run_names_the_scanners_that_strict_counts_as_run(
+    tmp_path: Path, capsys: CaptureFixture[str]
+) -> None:
+    """The report and the gate must agree: a scanner `--strict` holds against the run is not one
+    `security_audit.json` says ran. A Trivy `[]` and a Gitleaks `{}` were both listed."""
+    runner = RecordingRunner(
+        report_texts={**USABLE_REPORTS, "trivy.json": "[]", "gitleaks.json": "{}"}
+    )
+
+    exit_code = _strict(tmp_path, runner)
+
+    report = json.loads((tmp_path / "security_audit.json").read_text(encoding="utf-8"))
+    assert exit_code == cli.EXIT_INCOMPLETE
+    assert report["summary"]["tools_run"] == ["Semgrep"]
+    assert "STRICT: Trivy, Gitleaks did not produce a usable report" in capsys.readouterr().out
+
+
+def test_a_report_holding_a_lone_surrogate_does_not_stop_the_audit(
+    tmp_path: Path, capsys: CaptureFixture[str]
+) -> None:
+    """Tidying such a report raised, so Gitleaks never ran and no `security_audit.json` was written,
+    and the run ended in a traceback rather than a verdict."""
+    semgrep_report = (
+        r'{"results": [{"check_id": "r", "path": "bad\udcff.py", "start": {"line": 1}, '
+        r'"extra": {"severity": "ERROR", "message": "m"}}]}'
+    )
+    runner = RecordingRunner(report_texts={**USABLE_REPORTS, "semgrep.json": semgrep_report})
+
+    exit_code = _strict(tmp_path, runner)
+
+    report = json.loads((tmp_path / "security_audit.json").read_text(encoding="utf-8"))
+    assert exit_code == 1
+    assert len(runner.commands) == 3
+    assert report["summary"]["tools_run"] == ["Trivy", "Semgrep", "Gitleaks"]
+    assert "AUDIT FAILED!" in capsys.readouterr().out
+
+
+@pytest.mark.parametrize(
+    "value", ["[" * 100_000 + "]" * 100_000, "9" * 5_000], ids=["too-deep", "too-long"]
+)
+def test_a_report_more_than_python_can_parse_fails_the_audit_after_every_scanner_ran(
+    tmp_path: Path, capsys: CaptureFixture[str], value: str
+) -> None:
+    """`json.loads` raised out of the rewrite, so the scanners after this one never ran. Read as
+    a warning instead, the report's findings were dropped and the audit passed, `--strict` or not:
+    a secret beside a field nested too deep went unreported. Now every scanner runs, and the audit
+    fails saying why. 100,000 levels is past every Python's limit, and 5,000 digits too."""
+    leak = '[{"RuleID": "aws-key", "File": "src/key.py", "StartLine": 1, "Extra": ' + value + "}]"
+    runner = RecordingRunner(report_texts={**USABLE_REPORTS, "gitleaks.json": leak})
+
+    exit_code = cli.main(["--project-root", str(tmp_path)], runner=runner)
+
+    captured = capsys.readouterr()
+    assert exit_code == 1
+    assert len(runner.commands) == 3
+    assert "PASS" not in captured.out
+    assert "   -> Warning: gitleaks.json is more JSON than Python can parse" in captured.out
+    assert "warden: error: gitleaks.json is more JSON than Python can parse" in captured.err
+
+
+def test_a_report_too_deep_to_rewrite_is_still_read_and_counted(
+    tmp_path: Path, capsys: CaptureFixture[str]
+) -> None:
+    """Past 100 levels a report is left as the scanner wrote it, and Python still parses one 200
+    deep on every version: so the run counts it, and says so in the scanner's own stage."""
+    semgrep_report = '{"results": [' + "[" * 200 + "]" * 200 + "]}"
+    runner = RecordingRunner(report_texts={**USABLE_REPORTS, "semgrep.json": semgrep_report})
+
+    exit_code = _strict(tmp_path, runner)
+
+    report = json.loads((tmp_path / "security_audit.json").read_text(encoding="utf-8"))
+    assert exit_code == 0
+    assert report["summary"]["tools_run"] == ["Trivy", "Semgrep", "Gitleaks"]
+    assert (
+        "[2/4] Running Semgrep...\n   -> Done.\n"
+        "   -> Warning: semgrep.json nests more than 100 levels deep: "
+        "left as the scanner wrote it.\n"
+    ) in capsys.readouterr().out
 
 
 def test_strict_counts_a_report_whose_scanner_exited_non_zero_because_it_had_alerts(

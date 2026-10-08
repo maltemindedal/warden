@@ -1,16 +1,16 @@
 from __future__ import annotations
 
-import json
 import os
 import signal
 import stat
 import subprocess
-from collections.abc import Sequence
+from collections.abc import Iterator, Sequence
+from dataclasses import dataclass
 from pathlib import Path
 from typing import Protocol, cast
 
-from ._json import as_mapping, get_string, load_json
-from ._models import CommandResult, ToolRunResult
+from ._json import JsonLimitError, as_mapping, get_string, load_json, write_json
+from ._models import CommandResult
 from ._scanners import SCANNERS, Scanner, ScanRequest
 
 
@@ -28,24 +28,21 @@ class CommandRunner(Protocol):
     ) -> CommandResult: ...
 
 
-def tool_succeeded(result: ToolRunResult) -> bool:
-    return result.returncode in result.accepted_returncodes
+@dataclass(slots=True, frozen=True)
+class ToolRunResult:
+    """What running one scanner came to: how it exited, and what it left as its report."""
 
+    scanner: Scanner
+    returncode: int | None
+    report_written: bool
+    warning: str | None = None
+    report_warning: str | None = None
+    """Why the report was left as the scanner wrote it, when it was."""
 
-def report_written(result: ToolRunResult) -> bool:
-    return result.report_path.exists()
-
-
-def report_usable(scanner: Scanner, result: ToolRunResult) -> bool:
-    """Whether the scanner left a report of the shape its parser reads, so its run counts.
-
-    The exit status is not consulted: ZAP exits non-zero when it has alerts, and a clean Trivy
-    report is an object with no `Results` in it, so only the shape of the file says it ran.
-    """
-    loaded = load_json(result.report_path)
-    if loaded.error is not None:
-        return False
-    return isinstance(loaded.data, list if scanner.report_is_array else dict)
+    @property
+    def succeeded(self) -> bool:
+        """Whether the scanner exited with a status its record accepts."""
+        return self.returncode in self.scanner.accepted_returncodes
 
 
 def _clear_stale_reports(report_dir: Path) -> None:
@@ -235,18 +232,62 @@ def _without_excluded(raw_data: object, path_key: str, exclude_dirs: Sequence[st
     return [finding for finding in cast(list[object], raw_data) if not excluded(finding)]
 
 
-def _prettify_json(
+_MAX_TIDY_DEPTH = 100
+"""How deeply a report may nest and still be rewritten: Semgrep's nest 5 deep, the fixtures 7.
+
+Indenting writes two spaces per level on every line, so a report's size grows with the square of its
+depth: an 18 KB report nested 9,000 deep is rewritten as 162 MB on Python 3.13, and on 3.12 the
+indenting encoder cannot go past about 1,000 levels at all, which `json.loads` can."""
+
+
+def _nested_deeper_than(data: object, limit: int) -> bool:
+    """Whether `data` nests lists or objects deeper than `limit` levels, found without recursing.
+
+    The walk keeps one iterator per level it is inside, so it holds at most `limit` of them
+    however many values the report has.
+    """
+    levels: list[Iterator[object]] = [iter((data,))]
+    while levels:
+        for value in levels[-1]:
+            if isinstance(value, dict):
+                children: Iterator[object] = iter(cast(dict[str, object], value).values())
+            elif isinstance(value, list):
+                children = iter(cast(list[object], value))
+            else:
+                continue
+            if len(levels) > limit:
+                return True
+            levels.append(children)
+            break
+        else:
+            levels.pop()
+    return False
+
+
+def _tidy_report(
     path: Path, *, path_key: str | None = None, exclude_dirs: Sequence[str] = ()
-) -> None:
-    if not path.exists():
-        return
+) -> str | None:
+    """Pretty-print the report a scanner left, without the findings under `exclude_dirs`.
+
+    One that is absent or not JSON is left alone. So is one that is too deep to rewrite or more
+    than Python can parse, and for those what comes back says so. Either way the report keeps
+    every finding, those under `exclude_dirs` too: dropping one is never the safe way to be wrong.
+    The aggregator then fails the audit on one that Python cannot parse.
+    """
     try:
-        raw_data: object = json.loads(path.read_text(encoding="utf-8"))
-    except (OSError, UnicodeDecodeError, json.JSONDecodeError):
-        return
+        loaded = load_json(path)
+    except JsonLimitError as error:
+        return f"{error}: left as the scanner wrote it."
+    if not loaded.found or loaded.error is not None:
+        return None
+    if _nested_deeper_than(loaded.data, _MAX_TIDY_DEPTH):
+        depth = f"{path.name} nests more than {_MAX_TIDY_DEPTH} levels deep"
+        return f"{depth}: left as the scanner wrote it."
+    raw_data = loaded.data
     if path_key is not None:
         raw_data = _without_excluded(raw_data, path_key, exclude_dirs)
-    path.write_text(json.dumps(raw_data, indent=2, ensure_ascii=False), encoding="utf-8")
+    write_json(path, raw_data)
+    return None
 
 
 def scan_request(
@@ -275,7 +316,7 @@ def run_scanner(
     *,
     timeout: float | None = None,
 ) -> ToolRunResult:
-    """Build this scanner's command line, run it, and normalise what came back."""
+    """Build this scanner's command line, run it, and tidy the report it left."""
     command = scanner.build_command(request)
     result = runner(
         command.args,
@@ -290,13 +331,13 @@ def run_scanner(
         if command.on_timeout is not None:
             # Best effort: the container may be gone already, and only the attempt matters.
             runner(command.on_timeout, cwd=command.cwd, stderr_to_devnull=True, timeout=30)
-    _prettify_json(
+    report_warning = _tidy_report(
         request.report_path, path_key=scanner.path_key, exclude_dirs=request.exclude_dirs
     )
     return ToolRunResult(
-        name=scanner.label,
+        scanner=scanner,
         returncode=result.returncode,
-        report_path=request.report_path,
-        accepted_returncodes=scanner.accepted_returncodes,
+        report_written=request.report_path.exists(),
         warning=result.warning,
+        report_warning=report_warning,
     )

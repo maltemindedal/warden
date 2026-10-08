@@ -7,7 +7,7 @@ from pathlib import Path
 import pytest
 from pytest import CaptureFixture
 
-from warden._json import get_int, load_json
+from warden._json import JsonLimitError, get_int, load_json
 from warden._models import Finding, Severity
 from warden._parsers import normalize_severity, parse_zap
 from warden._scanners import SCANNERS
@@ -15,6 +15,10 @@ from warden._summary import judge, print_summary
 from warden.aggregate import build_report, main
 
 FIXTURE_DIR = Path(__file__).parent / "fixtures"
+TOO_DEEP = "[" * 100_000 + "]" * 100_000
+"""Nested past the recursion limit of every Python Warden supports (about 10,000 from 3.12)."""
+TOO_LONG = "9" * 5_000
+"""An integer past the 4,300 digits `json.loads` will convert."""
 
 
 @pytest.fixture(autouse=True)
@@ -76,6 +80,7 @@ def test_load_json_returns_the_parsed_document_when_the_file_is_valid(tmp_path: 
 
     assert loaded.data == {"Results": []}
     assert loaded.error is None
+    assert loaded.found
 
 
 def test_load_json_reports_a_parse_failure_as_a_value(tmp_path: Path) -> None:
@@ -86,6 +91,7 @@ def test_load_json_reports_a_parse_failure_as_a_value(tmp_path: Path) -> None:
 
     assert loaded.data is None
     assert loaded.error
+    assert loaded.found
 
 
 def test_load_json_treats_a_missing_file_as_neither_data_nor_error(tmp_path: Path) -> None:
@@ -93,6 +99,29 @@ def test_load_json_treats_a_missing_file_as_neither_data_nor_error(tmp_path: Pat
 
     assert loaded.data is None
     assert loaded.error is None
+    assert not loaded.found
+
+
+def test_load_json_tells_a_report_holding_null_from_an_absent_one(tmp_path: Path) -> None:
+    """Both have no data, and only the absent one is a scanner that wrote nothing."""
+    report = tmp_path / "zap.json"
+    report.write_text("null", encoding="utf-8")
+
+    loaded = load_json(report)
+
+    assert (loaded.data, loaded.error, loaded.found) == (None, None, True)
+
+
+@pytest.mark.parametrize(
+    "text", [TOO_DEEP, '{"line": ' + TOO_LONG + "}"], ids=["too-deep", "too-long"]
+)
+def test_load_json_raises_on_json_more_than_python_can_parse(tmp_path: Path, text: str) -> None:
+    """Such a report may hold findings, so it cannot be returned as a warning to read past."""
+    report = tmp_path / "semgrep.json"
+    report.write_text(text, encoding="utf-8")
+
+    with pytest.raises(JsonLimitError, match="semgrep.json is more JSON than Python can parse"):
+        load_json(report)
 
 
 def test_build_report_reads_all_supported_tools(tmp_path: Path) -> None:
@@ -128,8 +157,89 @@ def test_build_report_warns_about_a_report_it_could_not_parse(
     assert "Warning: Could not parse trivy.json:" in capsys.readouterr().out
 
 
+@pytest.mark.parametrize(
+    ("report_file", "text", "shape", "label"),
+    [
+        ("trivy.json", "[]", "object", "Trivy"),
+        ("semgrep.json", '"results"', "object", "Semgrep"),
+        ("gitleaks.json", "{}", "array", "Gitleaks"),
+        ("zap.json", "null", "object", "ZAP"),
+    ],
+)
+def test_a_report_that_is_not_the_shape_its_scanner_writes_is_left_out_of_tools_run(
+    tmp_path: Path,
+    capsys: CaptureFixture[str],
+    report_file: str,
+    text: str,
+    shape: str,
+    label: str,
+) -> None:
+    """`tools_run` once listed any report that parsed as JSON, so a Trivy `[]` read as Trivy
+    having run while `--strict` held it against the run and no finding could come from it."""
+    (tmp_path / report_file).write_text(text, encoding="utf-8")
+
+    findings, report = build_report(tmp_path)
+
+    assert report["summary"]["tools_run"] == []
+    assert findings == []
+    assert (
+        f"Warning: {report_file} is not the JSON {shape} {label} writes, "
+        f"so {label} is left out of tools_run."
+    ) in capsys.readouterr().out
+
+
+@pytest.mark.parametrize("value", [TOO_DEEP, TOO_LONG], ids=["too-deep", "too-long"])
+def test_a_report_more_than_python_can_parse_fails_the_audit_without_a_traceback(
+    tmp_path: Path, capsys: CaptureFixture[str], value: str
+) -> None:
+    """`json.loads` raised out of `warden-aggregate`, which fails closed but is a traceback. Read
+    as a warning instead, the report's findings were dropped and the audit passed: a secret beside
+    a field nested too deep went unreported. It is neither now: the audit fails, saying why."""
+    leak = '[{"RuleID": "aws-key", "File": "src/key.py", "StartLine": 1, "Extra": ' + value + "}]"
+    (tmp_path / "gitleaks.json").write_text(leak, encoding="utf-8")
+    output = tmp_path / "out" / "security_audit.json"
+
+    exit_code = main([str(tmp_path), str(output)])
+
+    assert exit_code == 1
+    assert not output.exists()
+    assert "warden-aggregate: error: gitleaks.json is more JSON than Python can parse" in (
+        capsys.readouterr().err
+    )
+
+
+def test_a_report_that_is_absent_is_not_warned_about(
+    tmp_path: Path, capsys: CaptureFixture[str]
+) -> None:
+    """A disabled scanner writes no report, and that is not worth a warning."""
+    _, report = build_report(tmp_path)
+
+    assert report["summary"]["tools_run"] == []
+    assert "Warning" not in capsys.readouterr().out
+
+
+def test_a_finding_whose_file_holds_a_lone_surrogate_is_written_to_the_report(
+    tmp_path: Path,
+) -> None:
+    """`warden-aggregate` raised writing such a finding and left `security_audit.json` empty."""
+    (tmp_path / "semgrep.json").write_text(
+        r'{"results": [{"check_id": "r", "path": "bad\udcff.py", "start": {"line": 1}, '
+        r'"extra": {"severity": "ERROR", "message": "m"}}]}',
+        encoding="utf-8",
+    )
+    output = tmp_path / "security_audit.json"
+
+    exit_code = main([str(tmp_path), str(output)])
+
+    report = json.loads(output.read_text(encoding="utf-8"))
+    assert exit_code == 1
+    assert [finding["file"] for finding in report["findings"]] == ["bad\udcff.py"]
+
+
 def test_parse_zap_reports_unknown_file_without_an_instance_uri() -> None:
-    findings = parse_zap({"site": [{"alerts": [{"riskcode": "3", "alert": "No instances"}]}]})
+    findings = parse_zap(
+        {"site": [{"alerts": [{"riskcode": "3", "alert": "No instances"}]}]}, "ZAP"
+    )
 
     assert len(findings) == 1
     assert findings[0].file == "Unknown"

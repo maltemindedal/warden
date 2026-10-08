@@ -14,7 +14,8 @@ from ._parsers import parse_gitleaks, parse_semgrep, parse_trivy, parse_zap
 ZAP_IMAGE: Final[str] = "ghcr.io/zaproxy/zaproxy:stable"
 ZAP_HTML_REPORT: Final[str] = "zap.html"
 
-ReportParser = Callable[[object | None], list[Finding]]
+ReportParser = Callable[[object | None, str], list[Finding]]
+"""Reads a report into findings, each tagged with the label it is given: see `Scanner.parse`."""
 
 
 @dataclass(slots=True, frozen=True)
@@ -226,6 +227,18 @@ class Scanner:
     def key(self) -> str:
         """The `.warden.yaml` key, derived from the label so the two cannot drift apart."""
         return self.label.lower()
+
+    def parse(self, report: object | None) -> list[Finding]:
+        """The findings in `report`, each tagged with this scanner's label.
+
+        The parser is handed the label rather than naming its own tool, so the label a finding
+        carries and the one the summary looks its category up by cannot drift apart.
+        """
+        return self.parser(report, self.label)
+
+    def reads_report(self, report: object | None) -> bool:
+        """Whether `report` has the shape this scanner's parser reads, so its run counts."""
+        return isinstance(report, list if self.report_is_array else dict)
 
 
 TRIVY: Final[Scanner] = Scanner(

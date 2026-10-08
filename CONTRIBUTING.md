@@ -143,8 +143,8 @@ updating one, update both.
 - Public functions are typed; internal helpers are prefixed with `_`.
 - Data structures are frozen dataclasses or `TypedDict`s in `_models.py`, kept
   free of logic. A record that needs a derived accessor lives beside the code
-  that uses it instead. `Scanner` lives in `_scanners.py`, and `Verdict` lives
-  in `_summary.py`.
+  that uses it instead. `Scanner` lives in `_scanners.py`, `Verdict` in
+  `_summary.py`, and `ToolRunResult` in `tooling.py`.
 - `tooling.py` is the only module that runs subprocesses. A scanner's command
   line is built by its `Scanner` record; `tooling.run_scanner` is what runs it.
 - Adding a scanner means adding a `Scanner` record, its parser, and its command

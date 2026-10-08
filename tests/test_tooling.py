@@ -16,7 +16,6 @@ from pytest import MonkeyPatch
 
 from fakes import RecordingRunner, symlink_or_skip
 from warden import tooling
-from warden._models import ToolRunResult
 from warden._scanners import (
     GITLEAKS,
     SCANNERS,
@@ -45,7 +44,7 @@ def _run(
     exclude_dirs: Sequence[str] = (),
     url: str = "",
     timeout: float | None = None,
-) -> ToolRunResult:
+) -> tooling.ToolRunResult:
     request = tooling.scan_request(
         scanner,
         project_root=tmp_path,
@@ -527,7 +526,8 @@ def test_what_a_timed_out_scanner_left_behind_is_not_kept_as_its_report(tmp_path
     result = _run(TRIVY, tmp_path, runner, timeout=5)
 
     assert runner.commands[0].timeout == 5
-    assert not result.report_path.exists()
+    assert not result.report_written
+    assert not (tmp_path / "trivy.json").exists()
 
 
 def test_a_scanner_that_is_missing_warns_instead_of_raising(tmp_path: Path) -> None:
@@ -535,23 +535,23 @@ def test_a_scanner_that_is_missing_warns_instead_of_raising(tmp_path: Path) -> N
 
     result = _run(TRIVY, tmp_path, runner)
 
-    assert not tooling.tool_succeeded(result)
-    assert not tooling.report_written(result)
+    assert not result.succeeded
+    assert not result.report_written
     assert result.warning == "trivy was not found on PATH."
 
 
 def test_semgrep_accepts_a_run_that_found_something(tmp_path: Path) -> None:
     runner = RecordingRunner(returncode=1)
 
-    assert tooling.tool_succeeded(_run(SEMGREP, tmp_path, runner))
+    assert _run(SEMGREP, tmp_path, runner).succeeded
 
 
 def test_the_other_scanners_accept_only_a_clean_exit(tmp_path: Path) -> None:
     runner = RecordingRunner(returncode=1)
 
-    assert not tooling.tool_succeeded(_run(TRIVY, tmp_path, runner))
-    assert not tooling.tool_succeeded(_run(GITLEAKS, tmp_path, runner))
-    assert not tooling.tool_succeeded(_run(ZAP, tmp_path, runner, url="http://example.test"))
+    assert not _run(TRIVY, tmp_path, runner).succeeded
+    assert not _run(GITLEAKS, tmp_path, runner).succeeded
+    assert not _run(ZAP, tmp_path, runner, url="http://example.test").succeeded
 
 
 def test_a_report_is_pretty_printed_after_the_scanner_writes_it(tmp_path: Path) -> None:
@@ -559,7 +559,7 @@ def test_a_report_is_pretty_printed_after_the_scanner_writes_it(tmp_path: Path) 
 
     result = _run(TRIVY, tmp_path, runner)
 
-    assert tooling.tool_succeeded(result)
+    assert result.succeeded
     assert (tmp_path / "trivy.json").read_text(encoding="utf-8") == '{\n  "Results": []\n}'
 
 
@@ -569,6 +569,77 @@ def test_a_report_that_is_not_json_is_left_alone(tmp_path: Path) -> None:
     _run(TRIVY, tmp_path, runner)
 
     assert (tmp_path / "trivy.json").read_text(encoding="utf-8") == "not json"
+
+
+@pytest.mark.parametrize(("report_text", "written"), [(None, False), ("not json", True)])
+def test_a_run_records_whether_it_left_a_report(
+    tmp_path: Path, report_text: str | None, written: bool
+) -> None:
+    """The CLI prints "Done." for a scanner that left a report, whatever the report holds: whether
+    that report counts is the aggregator's call, in `tools_run`."""
+    result = _run(TRIVY, tmp_path, RecordingRunner(report_text=report_text))
+
+    assert result.report_written is written
+
+
+def test_a_report_holding_a_lone_surrogate_is_tidied_and_reads_back_the_same(
+    tmp_path: Path,
+) -> None:
+    """A `\\udcff` escape (a file name that is not UTF-8, as Python writes one) has no UTF-8
+    encoding: rewriting the report raised mid-write, left it empty and stopped the audit."""
+    report = (
+        r'{"results": [{"check_id": "r", "path": "bad\udcff.py", "start": {"line": 1}, '
+        r'"extra": {"severity": "ERROR", "message": "m"}}]}'
+    )
+
+    _run(SEMGREP, tmp_path, RecordingRunner(report_text=report))
+
+    assert json.loads((tmp_path / "semgrep.json").read_text(encoding="utf-8")) == json.loads(report)
+
+
+@pytest.mark.parametrize(("depth", "rewritten"), [(100, True), (101, False)])
+def test_a_report_nested_past_100_levels_is_left_as_the_scanner_wrote_it(
+    tmp_path: Path, depth: int, rewritten: bool
+) -> None:
+    """Indenting a report grows it with the square of its depth: on Python 3.13 an 18 KB report
+    nested 9,000 deep became 162 MB, and on 3.12 the rewrite raised past about 1,000 levels.
+    One that deep is left alone instead, its findings under `exclude_dirs` included."""
+    nested = "[" * (depth - 2) + "]" * (depth - 2)
+    text = '[{"RuleID": "r", "File": "vendor/key.pem", "Extra": ' + nested + "}]"
+
+    result = _run(GITLEAKS, tmp_path, RecordingRunner(report_text=text), exclude_dirs=["vendor"])
+
+    assert (tmp_path / "gitleaks.json").read_text(encoding="utf-8") == ("[]" if rewritten else text)
+    assert result.report_warning == (
+        None
+        if rewritten
+        else "gitleaks.json nests more than 100 levels deep: left as the scanner wrote it."
+    )
+
+
+def test_a_report_more_than_python_can_parse_is_left_as_written_for_the_aggregator(
+    tmp_path: Path,
+) -> None:
+    """`json.loads` raised out of the rewrite, which stopped the audit before the next scanner.
+    The report is left as written instead, and the aggregator fails the audit on it."""
+    text = '{"Results": [], "SchemaVersion": ' + "9" * 5_000 + "}"
+
+    result = _run(TRIVY, tmp_path, RecordingRunner(report_text=text))
+
+    assert (tmp_path / "trivy.json").read_text(encoding="utf-8") == text
+    assert result.report_warning is not None
+    assert result.report_warning.startswith("trivy.json is more JSON than Python can parse")
+
+
+def test_a_gitleaks_report_with_every_finding_excluded_still_counts_as_run(tmp_path: Path) -> None:
+    """Filtering `exclude_dirs` out of the report must leave the shape `tools_run` looks for."""
+    runner = RecordingRunner(report_text='[{"RuleID": "r", "File": "vendor/key.pem"}]')
+
+    _run(GITLEAKS, tmp_path, runner, exclude_dirs=["vendor"])
+
+    report = json.loads((tmp_path / "gitleaks.json").read_text(encoding="utf-8"))
+    assert report == []
+    assert GITLEAKS.reads_report(report)
 
 
 def test_every_scanner_can_build_a_command_line(tmp_path: Path) -> None:

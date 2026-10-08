@@ -1,12 +1,12 @@
 from __future__ import annotations
 
 import argparse
-import json
+import sys
 from collections.abc import Sequence
 from pathlib import Path
 from typing import cast
 
-from ._json import load_json
+from ._json import JsonLimitError, load_json, write_json
 from ._models import (
     AggregateCliOptions,
     AggregateReportDict,
@@ -38,26 +38,43 @@ def finding_to_dict(finding: Finding) -> FindingDict:
     return entry
 
 
+FAILS_CLOSED = "so the audit fails rather than pass without the findings it may hold."
+
+
 def _load_reports(report_dir: Path) -> list[tuple[Scanner, object | None]]:
-    """Read every scanner's report, warning about any that is present but unparsable."""
+    """Read every scanner's report, warning about any that is present but unusable.
+
+    One that is more JSON than Python can parse raises `JsonLimitError`: it may hold findings,
+    so the audit fails rather than pass without them.
+    """
     reports: list[tuple[Scanner, object | None]] = []
     for scanner in SCANNERS:
         loaded = load_json(report_dir / scanner.report_file)
         if loaded.error is not None:
             print(f"Warning: Could not parse {scanner.report_file}: {loaded.error}")
+        elif loaded.found and not scanner.reads_report(loaded.data):
+            shape = "array" if scanner.report_is_array else "object"
+            print(
+                f"Warning: {scanner.report_file} is not the JSON {shape} {scanner.label} writes, "
+                f"so {scanner.label} is left out of tools_run."
+            )
         reports.append((scanner, loaded.data))
     return reports
 
 
 def detect_tools_run(reports: Sequence[tuple[Scanner, object | None]]) -> list[str]:
-    return [scanner.label for scanner, raw_report in reports if raw_report is not None]
+    """The scanners whose report has the shape their parser reads: those that count as run.
+
+    The exit status is not consulted: ZAP exits non-zero when it has alerts, and a clean Trivy
+    report is an object with no `Results` in it, so only the shape of the file says it ran.
+    `warden --strict` reads its answer from here, so the gate and the report cannot disagree.
+    """
+    return [scanner.label for scanner, raw_report in reports if scanner.reads_report(raw_report)]
 
 
 def build_report(report_dir: str | Path) -> tuple[list[Finding], AggregateReportDict]:
     reports = _load_reports(Path(report_dir))
-    findings = [
-        finding for scanner, raw_report in reports for finding in scanner.parser(raw_report)
-    ]
+    findings = [finding for scanner, raw_report in reports for finding in scanner.parse(raw_report)]
     findings.sort(key=lambda finding: severity_rank(finding.severity))
     report: AggregateReportDict = {
         "summary": {
@@ -72,20 +89,21 @@ def build_report(report_dir: str | Path) -> tuple[list[Finding], AggregateReport
 def write_report(output_file: str | Path, report: AggregateReportDict) -> None:
     output_path = Path(output_file)
     output_path.parent.mkdir(parents=True, exist_ok=True)
-    output_path.write_text(json.dumps(report, indent=2, ensure_ascii=False), encoding="utf-8")
+    write_json(output_path, report)
 
 
 def generate_report(
     *,
     report_dir: str | Path,
     output_file: str | Path,
-) -> Verdict:
+) -> tuple[Verdict, list[str]]:
+    """Write the report and print its summary; return the verdict and the report's `tools_run`."""
     findings, report = build_report(report_dir)
     write_report(output_file, report)
     print(f"Generated {output_file} with {len(findings)} issues.")
     verdict = judge(findings)
     print_summary(verdict=verdict, output_file=output_file)
-    return verdict
+    return verdict, report["summary"]["tools_run"]
 
 
 def _parse_args(argv: list[str] | None = None) -> AggregateCliOptions:
@@ -115,5 +133,9 @@ def _parse_args(argv: list[str] | None = None) -> AggregateCliOptions:
 def main(argv: list[str] | None = None) -> int:
     options = _parse_args(argv)
     print(f"--- Aggregating Reports from {options.report_dir} ---")
-    verdict = generate_report(report_dir=options.report_dir, output_file=options.output_file)
+    try:
+        verdict, _ = generate_report(report_dir=options.report_dir, output_file=options.output_file)
+    except JsonLimitError as error:
+        print(f"warden-aggregate: error: {error}, {FAILS_CLOSED}", file=sys.stderr)
+        return 1
     return 1 if verdict.failed else 0

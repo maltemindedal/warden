@@ -6,8 +6,19 @@ A scan produces two kinds of output:
   pretty-printing and, for `gitleaks.json`, the removal of findings under
   `exclude_dirs`. Gitleaks runs with `--redact`, so `gitleaks.json` holds
   `REDACTED` in place of each matched secret. Trivy runs with `--scanners vuln`, so `trivy.json` holds
-  vulnerabilities only.
+  vulnerabilities only. A report nested more than 100 levels deep is left exactly
+  as the scanner wrote it, with a warning, and no findings are removed from it:
+  the reports these scanners write nest far less deeply. One that is more JSON
+  than Python can parse (nested past about 1,000 levels on Python 3.11 or 10,000
+  from 3.12, or holding an integer of more than 4,300 digits) is left as written
+  too, and the audit then fails with exit `1` rather than pass without the
+  findings it may hold.
 - `security_audit.json` contains the merged report described here.
+
+Warden writes both as UTF-8 with non-ASCII text left as it is. The one exception
+is a lone surrogate, such as the `\udcff` escape a Python tool writes for a file
+name that is not UTF-8. UTF-8 cannot encode it, so Warden writes it back as the
+same `\uXXXX` escape it was read from.
 
 ## Input files
 
@@ -49,10 +60,13 @@ ZAP also writes `zap.html`, which is not read by the aggregator.
 | Field | Type | Meaning |
 | --- | --- | --- |
 | `total_issues` | integer | Number of entries in `findings`. |
-| `tools_run` | array of strings | Tools whose report file was present and parsable. |
+| `tools_run` | array of strings | Tools whose report file was present, parsable, and of the shape the tool writes: a JSON object for Trivy, Semgrep and ZAP, an array for Gitleaks. |
 
-`tools_run` reflects which reports were *found*, not which tools were enabled. A
-tool that was enabled but crashed before writing its report will be absent.
+`tools_run` reflects which usable reports were *found*, not which tools were
+enabled, and names the same tools that `warden --strict` counts as having run. A
+tool that was enabled but crashed before writing its report will be absent. So
+will one whose report is not JSON or not of its shape, and for those the
+aggregator prints a warning naming the file.
 
 ### `findings`
 

@@ -34,11 +34,11 @@ All under `src/warden/`.
 | --- | --- |
 | `cli.py` | Entry point. Parses arguments, sequences the stages, prints progress, returns the exit code. |
 | `config.py` | Parses `.warden.yaml` and resolves it against CLI arguments into a `ResolvedConfig`. Also the `warden-config` entry point. |
-| `tooling.py` | Prepares the report directory, runs a scanner's command line through a `CommandRunner`, and filters a report against `exclude_dirs` for a scanner that cannot skip paths. The only module that touches subprocesses. |
+| `tooling.py` | Prepares the report directory, runs a scanner's command line through a `CommandRunner`, filters a report against `exclude_dirs` for a scanner that cannot skip paths, and records what the run came to in a `ToolRunResult`. The only module that touches subprocesses. |
 | `aggregate.py` | Assembles the report from the parsed findings and writes it. Also the `warden-aggregate` entry point. |
 | `_parsers.py` | Turns each tool's JSON into `Finding` records and normalises severities. |
 | `_summary.py` | Creates a `Verdict` with counts, a category breakdown, and the build result, then prints its terminal table. |
-| `_json.py` | Type-narrowing helpers for walking untrusted JSON. A file it cannot parse comes back as an error, not a printed warning. |
+| `_json.py` | Type-narrowing helpers for walking untrusted JSON, and the reader and writer of JSON files. A file it cannot parse comes back as an error, not a printed warning; one that is valid JSON but more than Python can parse raises `JsonLimitError`; and text UTF-8 cannot encode (a lone surrogate) is written as its escape rather than raising. |
 | `_scanners.py` | One `Scanner` record per tool Warden knows about, the registry of them, and the code that builds each one's command line. |
 | `_models.py` | Shared dataclasses, typed dicts, and constants. No logic. |
 
@@ -48,8 +48,8 @@ which scanners exist reads `_scanners`, which depends on `_parsers` because each
 record carries its tool's parser. `aggregate` depends on `_parsers` and
 `_summary`; those depend on `_json`. `_models` imports no other package modules
 and contains no behavior. Records with derived properties live with the code
-that uses them. This puts `Verdict` in `_summary.py` and `Scanner` in
-`_scanners.py`.
+that uses them. This puts `Verdict` in `_summary.py`, `Scanner` in
+`_scanners.py` and `ToolRunResult` in `tooling.py`.
 
 `aggregate.py` once contained the parsing, rendering, and JSON-reading code.
 Those parts moved to separate modules when they began changing independently.
@@ -89,17 +89,32 @@ other process produced.
 A scanner that is missing or crashes does not abort the run or fail the build.
 This allows Warden to return results from the scanners that completed. It also
 means that a green build does not prove every scanner ran. `tools_run` records
-which report files Warden found. `--strict` opts into the opposite: after the
-verdict, `cli` holds against the run every scanner it started that left no report
-of the shape its parser reads (`tooling.report_usable`, from
-`Scanner.report_is_array`) and exits `3` unless a finding already made it `1`.
+which scanners left a usable report: one of the shape its parser reads, which
+`Scanner.reads_report` decides. `--strict` opts into the opposite: after the
+verdict, `cli` holds against the run every scanner it started that `tools_run`
+leaves out, and exits `3` unless a finding already made it `1`.
+`aggregate.generate_report` returns `tools_run` beside the verdict for this, so
+the gate takes its answer from the one read that also feeds the report, and the
+two cannot disagree about which scanners ran.
 
 Warden handles an unreadable report the same way. This can happen when a tool
 crashes while writing the file. `load_json` returns a `LoadedJson` containing
 either the parsed data or the read error. It does not print to the terminal, so
 tests can assert on the error value. `aggregate` prints the error because it
 iterates over `SCANNERS` and knows which scanner owns the file. Warden omits the
-scanner's findings and name from `tools_run`, then continues.
+scanner's findings and name from `tools_run`, then continues. A report that
+parses but is not the shape its scanner writes is handled the same way: its
+parser finds nothing in it, `aggregate` warns, and the scanner is left out of
+`tools_run`.
+
+A report that is valid JSON but more than Python can parse is the exception.
+`json.loads` gives up on nesting past the recursion limit (about 1,000 levels on
+3.11, 10,000 from 3.12) and on an integer of more than 4,300 digits, and such a
+report may hold findings, so `load_json` raises `JsonLimitError` rather than
+return a warning. `_tidy_report` leaves the report as written so the remaining
+scanners still run; the aggregator does not catch it, and `cli` turns it into
+`warden: error: ...` and exit `1`. The audit fails closed without a traceback,
+and a caller that forgets to handle the error still fails closed.
 
 ### Only Critical and High fail the build
 
@@ -137,7 +152,10 @@ category, summary position, parser, command builder, accepted exit codes,
 whether it needs a target URL, and, for a scanner with no flag to skip paths,
 the report key that holds each finding's file path. Warden derives the `.warden.yaml` key from the
 label instead of storing both values. The constructor rejects a label that
-cannot be converted to a valid key.
+cannot be converted to a valid key. For the same reason no parser names its own
+tool: `Scanner.parse` hands the parser the record's label, and the parser tags
+each finding with it, so the `tool` a finding carries is the label the summary
+looks its category up by.
 
 `SCANNERS` stores those records in report order. Code that needs a scanner list
 reads this registry. This includes report cleanup, CLI stages, aggregation,

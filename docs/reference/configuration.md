@@ -113,7 +113,10 @@ Gitleaks has no flag for skipping paths, so it scans everything and Warden then
 drops the findings under each listed directory from `gitleaks.json`. A value
 matches that directory and everything below it, from the project root only:
 `vendor` and `vendor/` exclude `vendor/lib.env` but not `sub/vendor/lib.env`, and
-a glob such as `**/vendor` matches nothing.
+a glob such as `**/vendor` matches nothing. A `gitleaks.json` nested more than 100
+levels deep is left as Gitleaks wrote it, with a warning, so nothing is dropped
+from it. One too deep for Python to parse at all fails the audit instead (see
+[Report format](report-format.md)).
 
 Because the semantics differ per tool, a pattern that excludes cleanly in one
 scanner may not in another. ZAP scans a URL rather than the filesystem, so
