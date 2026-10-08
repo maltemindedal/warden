@@ -227,6 +227,10 @@ class Scanner:
         """The `.warden.yaml` key, derived from the label so the two cannot drift apart."""
         return self.label.lower()
 
+    def reads_report(self, report: object | None) -> bool:
+        """Whether `report` has the shape this scanner's parser reads, so its run counts."""
+        return isinstance(report, list if self.report_is_array else dict)
+
 
 TRIVY: Final[Scanner] = Scanner(
     label="Trivy",

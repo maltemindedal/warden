@@ -6,11 +6,12 @@ import signal
 import stat
 import subprocess
 from collections.abc import Sequence
+from dataclasses import dataclass
 from pathlib import Path
 from typing import Protocol, cast
 
-from ._json import as_mapping, get_string, load_json
-from ._models import CommandResult, ToolRunResult
+from ._json import LoadedJson, as_mapping, get_string, load_json
+from ._models import CommandResult
 from ._scanners import SCANNERS, Scanner, ScanRequest
 
 
@@ -28,24 +29,25 @@ class CommandRunner(Protocol):
     ) -> CommandResult: ...
 
 
-def tool_succeeded(result: ToolRunResult) -> bool:
-    return result.returncode in result.accepted_returncodes
+@dataclass(slots=True, frozen=True)
+class ToolRunResult:
+    """What running one scanner came to: how it exited, and what it left as its report."""
 
-
-def report_written(result: ToolRunResult) -> bool:
-    return result.report_path.exists()
-
-
-def report_usable(scanner: Scanner, result: ToolRunResult) -> bool:
-    """Whether the scanner left a report of the shape its parser reads, so its run counts.
+    scanner: Scanner
+    returncode: int | None
+    report_path: Path
+    report_written: bool
+    report_usable: bool
+    """Whether the report has the shape the scanner's parser reads, so its run counts.
 
     The exit status is not consulted: ZAP exits non-zero when it has alerts, and a clean Trivy
-    report is an object with no `Results` in it, so only the shape of the file says it ran.
-    """
-    loaded = load_json(result.report_path)
-    if loaded.error is not None:
-        return False
-    return isinstance(loaded.data, list if scanner.report_is_array else dict)
+    report is an object with no `Results` in it, so only the shape of the file says it ran."""
+    warning: str | None = None
+
+    @property
+    def succeeded(self) -> bool:
+        """Whether the scanner exited with a status its record accepts."""
+        return self.returncode in self.scanner.accepted_returncodes
 
 
 def _clear_stale_reports(report_dir: Path) -> None:
@@ -235,18 +237,23 @@ def _without_excluded(raw_data: object, path_key: str, exclude_dirs: Sequence[st
     return [finding for finding in cast(list[object], raw_data) if not excluded(finding)]
 
 
-def _prettify_json(
+def _tidy_report(
     path: Path, *, path_key: str | None = None, exclude_dirs: Sequence[str] = ()
-) -> None:
+) -> LoadedJson:
+    """Pretty-print the report a scanner left, without the findings under `exclude_dirs`.
+
+    What comes back is what the report now holds. One that is absent or not JSON is left alone.
+    """
     if not path.exists():
-        return
-    try:
-        raw_data: object = json.loads(path.read_text(encoding="utf-8"))
-    except (OSError, UnicodeDecodeError, json.JSONDecodeError):
-        return
+        return LoadedJson()
+    loaded = load_json(path)
+    if loaded.error is not None:
+        return loaded
+    raw_data = loaded.data
     if path_key is not None:
         raw_data = _without_excluded(raw_data, path_key, exclude_dirs)
     path.write_text(json.dumps(raw_data, indent=2, ensure_ascii=False), encoding="utf-8")
+    return LoadedJson(data=raw_data)
 
 
 def scan_request(
@@ -275,7 +282,7 @@ def run_scanner(
     *,
     timeout: float | None = None,
 ) -> ToolRunResult:
-    """Build this scanner's command line, run it, and normalise what came back."""
+    """Build this scanner's command line, run it, and read what it left, once."""
     command = scanner.build_command(request)
     result = runner(
         command.args,
@@ -290,13 +297,14 @@ def run_scanner(
         if command.on_timeout is not None:
             # Best effort: the container may be gone already, and only the attempt matters.
             runner(command.on_timeout, cwd=command.cwd, stderr_to_devnull=True, timeout=30)
-    _prettify_json(
+    report = _tidy_report(
         request.report_path, path_key=scanner.path_key, exclude_dirs=request.exclude_dirs
     )
     return ToolRunResult(
-        name=scanner.label,
+        scanner=scanner,
         returncode=result.returncode,
         report_path=request.report_path,
-        accepted_returncodes=scanner.accepted_returncodes,
+        report_written=request.report_path.exists(),
+        report_usable=scanner.reads_report(report.data),
         warning=result.warning,
     )

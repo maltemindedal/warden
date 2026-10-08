@@ -34,7 +34,7 @@ All under `src/warden/`.
 | --- | --- |
 | `cli.py` | Entry point. Parses arguments, sequences the stages, prints progress, returns the exit code. |
 | `config.py` | Parses `.warden.yaml` and resolves it against CLI arguments into a `ResolvedConfig`. Also the `warden-config` entry point. |
-| `tooling.py` | Prepares the report directory, runs a scanner's command line through a `CommandRunner`, and filters a report against `exclude_dirs` for a scanner that cannot skip paths. The only module that touches subprocesses. |
+| `tooling.py` | Prepares the report directory, runs a scanner's command line through a `CommandRunner`, filters a report against `exclude_dirs` for a scanner that cannot skip paths, and records what the run came to in a `ToolRunResult`. The only module that touches subprocesses. |
 | `aggregate.py` | Assembles the report from the parsed findings and writes it. Also the `warden-aggregate` entry point. |
 | `_parsers.py` | Turns each tool's JSON into `Finding` records and normalises severities. |
 | `_summary.py` | Creates a `Verdict` with counts, a category breakdown, and the build result, then prints its terminal table. |
@@ -48,8 +48,8 @@ which scanners exist reads `_scanners`, which depends on `_parsers` because each
 record carries its tool's parser. `aggregate` depends on `_parsers` and
 `_summary`; those depend on `_json`. `_models` imports no other package modules
 and contains no behavior. Records with derived properties live with the code
-that uses them. This puts `Verdict` in `_summary.py` and `Scanner` in
-`_scanners.py`.
+that uses them. This puts `Verdict` in `_summary.py`, `Scanner` in
+`_scanners.py` and `ToolRunResult` in `tooling.py`.
 
 `aggregate.py` once contained the parsing, rendering, and JSON-reading code.
 Those parts moved to separate modules when they began changing independently.
@@ -91,8 +91,10 @@ This allows Warden to return results from the scanners that completed. It also
 means that a green build does not prove every scanner ran. `tools_run` records
 which report files Warden found. `--strict` opts into the opposite: after the
 verdict, `cli` holds against the run every scanner it started that left no report
-of the shape its parser reads (`tooling.report_usable`, from
-`Scanner.report_is_array`) and exits `3` unless a finding already made it `1`.
+of the shape its parser reads and exits `3` unless a finding already made it
+`1`. `run_scanner` decides that shape once, from the same read that tidies the
+report, with `Scanner.reads_report`, and keeps the answer in
+`ToolRunResult.report_usable`.
 
 Warden handles an unreadable report the same way. This can happen when a tool
 crashes while writing the file. `load_json` returns a `LoadedJson` containing

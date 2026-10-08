@@ -79,15 +79,6 @@ class AggregateCliOptions:
 
 
 @dataclass(slots=True, frozen=True)
-class ToolRunResult:
-    name: str
-    returncode: int | None
-    report_path: Path
-    accepted_returncodes: frozenset[int]
-    warning: str | None = None
-
-
-@dataclass(slots=True, frozen=True)
 class CommandResult:
     returncode: int | None
     warning: str | None = None

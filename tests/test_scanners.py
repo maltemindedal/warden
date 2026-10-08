@@ -64,6 +64,24 @@ def test_each_parser_tags_its_findings_with_its_scanner_label() -> None:
         assert {finding.tool for finding in findings} == {scanner.label}
 
 
+def test_each_scanner_reads_the_shape_of_its_own_fixture_report() -> None:
+    """`--strict` judges a report by `Scanner.reads_report`, and the parser walks it on its own.
+
+    A report the parser takes findings from must count as a usable one, or a run that worked
+    would be held against the build: the record's `report_is_array` has to agree with the parser.
+    """
+    for scanner in SCANNERS:
+        raw_report: object = json.loads(
+            (FIXTURE_DIR / scanner.report_file).read_text(encoding="utf-8")
+        )
+        other_shape: object = {} if isinstance(raw_report, list) else []
+
+        assert scanner.parser(raw_report)
+        assert scanner.reads_report(raw_report)
+        assert not scanner.reads_report(other_shape)
+        assert not scanner.reads_report(None)
+
+
 def test_every_scanner_runs_through_the_same_interface(tmp_path: Path) -> None:
     """No scanner is special-cased at dispatch: ZAP included, each record carries its own argv."""
     runner = RecordingRunner()
@@ -73,9 +91,8 @@ def test_every_scanner_runs_through_the_same_interface(tmp_path: Path) -> None:
             scanner, project_root=tmp_path, report_dir=tmp_path, url="http://example.test"
         )
         result = tooling.run_scanner(scanner, request, runner)
-        assert result.name == scanner.label
+        assert result.scanner is scanner
         assert result.report_path == tmp_path.resolve() / scanner.report_file
-        assert result.accepted_returncodes == scanner.accepted_returncodes
 
 
 def test_prepare_report_dir_clears_every_registered_report(tmp_path: Path) -> None:

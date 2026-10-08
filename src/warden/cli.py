@@ -8,7 +8,7 @@ from pathlib import Path
 from typing import cast
 
 from . import aggregate, config, tooling
-from ._models import CliOptions, ResolvedConfig, ToolRunResult
+from ._models import CliOptions, ResolvedConfig
 from ._scanners import SCANNERS, Scanner, rewrite_zap_target, url_problem
 from ._text import shown
 
@@ -68,9 +68,9 @@ def _parse_args(argv: list[str] | None = None) -> CliOptions:
     )
 
 
-def _incomplete(tools: _ToolsRun, unusable_url: bool) -> str | None:
+def _incomplete(tools: _ToolsRun, skipped_for_url: tuple[str, ...]) -> str | None:
     """What `--strict` holds against the run, or `None` if every scanner that was asked for ran."""
-    missing = [*tools.unusable, *(["ZAP"] if unusable_url else [])]
+    missing = [*tools.unusable, *skipped_for_url]
     if missing:
         return f"{', '.join(missing)} did not produce a usable report, so the scan is incomplete."
     if not tools.attempted:
@@ -90,17 +90,17 @@ def _fail(message: str) -> int:
     return 1
 
 
-def _print_result(result: ToolRunResult) -> None:
+def _print_result(result: tooling.ToolRunResult) -> None:
     if result.returncode is None and result.warning is not None:
         print(f"   -> Warning: {result.warning}")
         return
-    if tooling.tool_succeeded(result) or tooling.report_written(result):
+    if result.succeeded or result.report_written:
         print("   -> Done.")
         return
     if result.warning is not None:
         print(f"   -> Warning: {result.warning}")
         return
-    print(f"   -> Warning: {result.name} exited with status {result.returncode}.")
+    print(f"   -> Warning: {result.scanner.label} exited with status {result.returncode}.")
 
 
 def _announce_zap_target(url: str) -> None:
@@ -112,6 +112,15 @@ def _announce_zap_target(url: str) -> None:
             "'host.docker.internal' for Docker compatibility)"
         )
         print(f"      Targeting: {target}")
+
+
+def _url_scanners(resolved: ResolvedConfig) -> tuple[str, ...]:
+    """The enabled scanners that target the DAST URL rather than the project's files."""
+    return tuple(
+        scanner.label
+        for scanner in SCANNERS
+        if scanner.requires_url and scanner.key in resolved.enabled_tools
+    )
 
 
 def _skip_reason(scanner: Scanner, *, enabled: bool, url: str) -> str | None:
@@ -164,7 +173,7 @@ def _run_enabled_tools(
         result = tooling.run_scanner(scanner, request, runner, timeout=timeout)
         _print_result(result)
         attempted.append(scanner.label)
-        if not tooling.report_usable(scanner, result):
+        if not result.report_usable:
             unusable.append(scanner.label)
     return _ToolsRun(attempted=tuple(attempted), unusable=tuple(unusable))
 
@@ -186,16 +195,19 @@ def run_audit(options: CliOptions, *, runner: tooling.CommandRunner) -> int:
     print(f"   Target: {options.project_root}")
     for warning in resolved.warnings:
         print(f"Warning: {warning}")
-    unusable_url = False
+    skipped_for_url: tuple[str, ...] = ()
     if resolved.url:
         problem = url_problem(resolved.url)
         if problem is None:
             print(f"   DAST URL: {resolved.url}")
         else:
+            skipped_for_url = _url_scanners(resolved)
             shown_url = shown(resolved.url)
-            print(f"Warning: the DAST URL {shown_url} is not usable ({problem}): skipping ZAP.")
+            print(
+                f"Warning: the DAST URL {shown_url} is not usable ({problem}): "
+                f"skipping {', '.join(skipped_for_url)}."
+            )
             resolved = replace(resolved, url="")
-            unusable_url = True
 
     tools = _run_enabled_tools(options.project_root, report_dir, resolved, runner, options.timeout)
 
@@ -204,7 +216,7 @@ def run_audit(options: CliOptions, *, runner: tooling.CommandRunner) -> int:
         verdict = aggregate.generate_report(report_dir=report_dir, output_file=output_file)
     except OSError as error:
         return _fail(f"cannot read the reports or write {output_file.name}: {_describe(error)}")
-    incomplete = _incomplete(tools, unusable_url) if options.strict else None
+    incomplete = _incomplete(tools, skipped_for_url) if options.strict else None
     if incomplete is not None:
         print(f"\nSTRICT: {incomplete}")
     if verdict.failed:

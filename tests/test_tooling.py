@@ -16,7 +16,6 @@ from pytest import MonkeyPatch
 
 from fakes import RecordingRunner, symlink_or_skip
 from warden import tooling
-from warden._models import ToolRunResult
 from warden._scanners import (
     GITLEAKS,
     SCANNERS,
@@ -45,7 +44,7 @@ def _run(
     exclude_dirs: Sequence[str] = (),
     url: str = "",
     timeout: float | None = None,
-) -> ToolRunResult:
+) -> tooling.ToolRunResult:
     request = tooling.scan_request(
         scanner,
         project_root=tmp_path,
@@ -535,23 +534,23 @@ def test_a_scanner_that_is_missing_warns_instead_of_raising(tmp_path: Path) -> N
 
     result = _run(TRIVY, tmp_path, runner)
 
-    assert not tooling.tool_succeeded(result)
-    assert not tooling.report_written(result)
+    assert not result.succeeded
+    assert not result.report_written
     assert result.warning == "trivy was not found on PATH."
 
 
 def test_semgrep_accepts_a_run_that_found_something(tmp_path: Path) -> None:
     runner = RecordingRunner(returncode=1)
 
-    assert tooling.tool_succeeded(_run(SEMGREP, tmp_path, runner))
+    assert _run(SEMGREP, tmp_path, runner).succeeded
 
 
 def test_the_other_scanners_accept_only_a_clean_exit(tmp_path: Path) -> None:
     runner = RecordingRunner(returncode=1)
 
-    assert not tooling.tool_succeeded(_run(TRIVY, tmp_path, runner))
-    assert not tooling.tool_succeeded(_run(GITLEAKS, tmp_path, runner))
-    assert not tooling.tool_succeeded(_run(ZAP, tmp_path, runner, url="http://example.test"))
+    assert not _run(TRIVY, tmp_path, runner).succeeded
+    assert not _run(GITLEAKS, tmp_path, runner).succeeded
+    assert not _run(ZAP, tmp_path, runner, url="http://example.test").succeeded
 
 
 def test_a_report_is_pretty_printed_after_the_scanner_writes_it(tmp_path: Path) -> None:
@@ -559,7 +558,7 @@ def test_a_report_is_pretty_printed_after_the_scanner_writes_it(tmp_path: Path) 
 
     result = _run(TRIVY, tmp_path, runner)
 
-    assert tooling.tool_succeeded(result)
+    assert result.succeeded
     assert (tmp_path / "trivy.json").read_text(encoding="utf-8") == '{\n  "Results": []\n}'
 
 
@@ -569,6 +568,38 @@ def test_a_report_that_is_not_json_is_left_alone(tmp_path: Path) -> None:
     _run(TRIVY, tmp_path, runner)
 
     assert (tmp_path / "trivy.json").read_text(encoding="utf-8") == "not json"
+
+
+@pytest.mark.parametrize(
+    ("report_text", "written", "usable"),
+    [
+        (None, False, False),
+        ("not json", True, False),
+        ("null", True, False),
+        ("[]", True, False),
+        ("{}", True, True),
+    ],
+)
+def test_a_run_records_whether_it_left_a_report_and_whether_its_parser_reads_it(
+    tmp_path: Path, report_text: str | None, written: bool, usable: bool
+) -> None:
+    """`--strict` reads `report_usable` from the result, so the run must judge the report it left.
+
+    Trivy writes an object, so an array is written but not usable, as is anything that is not JSON.
+    """
+    result = _run(TRIVY, tmp_path, RecordingRunner(report_text=report_text))
+
+    assert (result.report_written, result.report_usable) == (written, usable)
+
+
+def test_a_gitleaks_report_with_every_finding_excluded_is_still_usable(tmp_path: Path) -> None:
+    """Filtering `exclude_dirs` out of the report must leave the shape `--strict` looks for."""
+    runner = RecordingRunner(report_text='[{"RuleID": "r", "File": "vendor/key.pem"}]')
+
+    result = _run(GITLEAKS, tmp_path, runner, exclude_dirs=["vendor"])
+
+    assert result.report_usable
+    assert json.loads((tmp_path / "gitleaks.json").read_text(encoding="utf-8")) == []
 
 
 def test_every_scanner_can_build_a_command_line(tmp_path: Path) -> None:
