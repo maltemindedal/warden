@@ -236,17 +236,51 @@ def _without_excluded(raw_data: object, path_key: str, exclude_dirs: Sequence[st
     return [finding for finding in cast(list[object], raw_data) if not excluded(finding)]
 
 
+_MAX_TIDY_DEPTH = 100
+"""How deeply a report may nest and still be rewritten: Semgrep's nest 5 deep, the fixtures 7.
+
+Indenting writes two spaces per level on every line, so a report's size grows with the square of its
+depth: an 18 KB report nested 9,000 deep is rewritten as 162 MB on Python 3.13, and on 3.12 the
+indenting encoder cannot go past about 1,000 levels at all, which `json.loads` can."""
+
+
+def _nested_deeper_than(data: object, limit: int) -> bool:
+    """Whether `data` nests lists or objects deeper than `limit` levels, found without recursing."""
+    pending: list[tuple[object, int]] = [(data, 1)]
+    while pending:
+        value, depth = pending.pop()
+        if isinstance(value, dict):
+            children = cast(dict[str, object], value).values()
+        elif isinstance(value, list):
+            children = cast(list[object], value)
+        else:
+            continue
+        if depth > limit:
+            return True
+        pending.extend((child, depth + 1) for child in children)
+    return False
+
+
 def _tidy_report(
     path: Path, *, path_key: str | None = None, exclude_dirs: Sequence[str] = ()
 ) -> LoadedJson:
     """Pretty-print the report a scanner left, without the findings under `exclude_dirs`.
 
-    What comes back is what the report now holds. One that is absent or not JSON is left alone.
+    What comes back is what the report now holds. One that is absent or not JSON is left alone,
+    and so is one nested deeper than `_MAX_TIDY_DEPTH`, with a warning.
     """
     if not path.exists():
         return LoadedJson()
     loaded = load_json(path)
     if loaded.error is not None:
+        return loaded
+    if _nested_deeper_than(loaded.data, _MAX_TIDY_DEPTH):
+        # Left as the scanner wrote it, the report keeps every finding, those under
+        # `exclude_dirs` too: dropping one is never the safe way to be wrong.
+        print(
+            f"Warning: {path.name} nests more than {_MAX_TIDY_DEPTH} levels deep: "
+            "left as the scanner wrote it."
+        )
         return loaded
     raw_data = loaded.data
     if path_key is not None:

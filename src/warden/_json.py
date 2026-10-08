@@ -64,12 +64,16 @@ def write_json(path: Path, data: object) -> None:
 
 
 def load_json(path: str | Path) -> LoadedJson:
-    """A file that is absent is not an error; one that is present but unreadable is."""
+    """A file that is absent is not an error; one that is present but unreadable is.
+
+    That includes one nested deeper than the interpreter can recurse, which `json.loads` meets
+    with a `RecursionError`: around 1,000 levels on Python 3.11, around 10,000 from 3.12.
+    """
     file_path = Path(path)
     if not file_path.exists():
         return LoadedJson()
     try:
         raw_data: object = json.loads(file_path.read_text(encoding="utf-8"))
-    except (OSError, UnicodeDecodeError, json.JSONDecodeError) as error:
+    except (OSError, UnicodeDecodeError, json.JSONDecodeError, RecursionError) as error:
         return LoadedJson(error=str(error))
     return LoadedJson(data=raw_data)

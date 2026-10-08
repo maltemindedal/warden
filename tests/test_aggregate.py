@@ -159,6 +159,23 @@ def test_a_report_that_is_not_the_shape_its_scanner_writes_is_left_out_of_tools_
     ) in capsys.readouterr().out
 
 
+def test_a_report_nested_too_deeply_to_read_is_a_warning_not_a_traceback(
+    tmp_path: Path, capsys: CaptureFixture[str]
+) -> None:
+    """`json.loads` raised `RecursionError`, which `load_json` did not catch: `warden-aggregate`
+    stopped with a traceback and wrote nothing. 100,000 levels is past every Python's limit."""
+    (tmp_path / "semgrep.json").write_text(
+        '{"results": ' + "[" * 100_000 + "]" * 100_000 + "}", encoding="utf-8"
+    )
+    _copy_fixture("gitleaks.json", tmp_path)
+
+    findings, report = build_report(tmp_path)
+
+    assert report["summary"]["tools_run"] == ["Gitleaks"]
+    assert [finding.tool for finding in findings] == ["Gitleaks"]
+    assert "Warning: Could not parse semgrep.json:" in capsys.readouterr().out
+
+
 def test_a_report_that_is_absent_is_not_warned_about(
     tmp_path: Path, capsys: CaptureFixture[str]
 ) -> None:

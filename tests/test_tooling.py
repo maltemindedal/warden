@@ -608,6 +608,23 @@ def test_a_report_holding_a_lone_surrogate_is_tidied_and_reads_back_the_same(
     assert json.loads((tmp_path / "semgrep.json").read_text(encoding="utf-8")) == json.loads(report)
 
 
+@pytest.mark.parametrize(("depth", "rewritten"), [(100, True), (101, False)])
+def test_a_report_nested_past_100_levels_is_left_as_the_scanner_wrote_it(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str], depth: int, rewritten: bool
+) -> None:
+    """Indenting a report grows it with the square of its depth: on Python 3.13 an 18 KB report
+    nested 9,000 deep became 162 MB, and on 3.12 the rewrite raised past about 1,000 levels.
+    One that deep is left alone instead, its findings under `exclude_dirs` included."""
+    nested = "[" * (depth - 2) + "]" * (depth - 2)
+    text = '[{"RuleID": "r", "File": "vendor/key.pem", "Extra": ' + nested + "}]"
+
+    result = _run(GITLEAKS, tmp_path, RecordingRunner(report_text=text), exclude_dirs=["vendor"])
+
+    assert result.report_usable
+    assert (tmp_path / "gitleaks.json").read_text(encoding="utf-8") == ("[]" if rewritten else text)
+    assert ("nests more than 100 levels deep" in capsys.readouterr().out) is not rewritten
+
+
 def test_a_gitleaks_report_with_every_finding_excluded_is_still_usable(tmp_path: Path) -> None:
     """Filtering `exclude_dirs` out of the report must leave the shape `--strict` looks for."""
     runner = RecordingRunner(report_text='[{"RuleID": "r", "File": "vendor/key.pem"}]')

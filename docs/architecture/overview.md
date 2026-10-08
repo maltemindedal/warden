@@ -98,14 +98,15 @@ report, with `Scanner.reads_report`, and keeps the answer in
 method, so the report and `--strict` agree on which scanners ran.
 
 Warden handles an unreadable report the same way. This can happen when a tool
-crashes while writing the file. `load_json` returns a `LoadedJson` containing
-either the parsed data or the read error. It does not print to the terminal, so
-tests can assert on the error value. `aggregate` prints the error because it
-iterates over `SCANNERS` and knows which scanner owns the file. Warden omits the
-scanner's findings and name from `tools_run`, then continues. A report that
-parses but is not the shape its scanner writes is handled the same way: its
-parser finds nothing in it, `aggregate` warns, and the scanner is left out of
-`tools_run`.
+crashes while writing the file, or when the file nests deeper than Python's JSON
+parser can recurse (about 1,000 levels on 3.11, 10,000 from 3.12). `load_json`
+returns a `LoadedJson` containing either the parsed data or the read error. It
+does not print to the terminal, so tests can assert on the error value.
+`aggregate` prints the error because it iterates over `SCANNERS` and knows which
+scanner owns the file. Warden omits the scanner's findings and name from
+`tools_run`, then continues. A report that parses but is not the shape its
+scanner writes is handled the same way: its parser finds nothing in it,
+`aggregate` warns, and the scanner is left out of `tools_run`.
 
 ### Only Critical and High fail the build
 

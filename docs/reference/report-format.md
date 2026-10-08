@@ -6,7 +6,9 @@ A scan produces two kinds of output:
   pretty-printing and, for `gitleaks.json`, the removal of findings under
   `exclude_dirs`. Gitleaks runs with `--redact`, so `gitleaks.json` holds
   `REDACTED` in place of each matched secret. Trivy runs with `--scanners vuln`, so `trivy.json` holds
-  vulnerabilities only.
+  vulnerabilities only. A report nested more than 100 levels deep is left exactly
+  as the scanner wrote it, with a warning, and no findings are removed from it:
+  the reports these scanners write nest far less deeply.
 - `security_audit.json` contains the merged report described here.
 
 Warden writes both as UTF-8 with non-ASCII text left as it is. The one exception
