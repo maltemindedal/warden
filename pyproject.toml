@@ -73,7 +73,7 @@ select = ["B", "BLE", "E", "F", "I", "PGH", "S", "UP", "W"]
 
 [tool.ruff.format]
 # ruff 0.16 formats Markdown by default. Keep the check on Python files, which is what it
-# covered before, and leave vendored docs (.agents/skills, hash-tracked) untouched.
+# covered before.
 exclude = ["*.md"]
 docstring-code-format = true
 quote-style = "double"
