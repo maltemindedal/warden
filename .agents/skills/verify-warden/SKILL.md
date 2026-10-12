@@ -18,7 +18,9 @@ drive is one `warden` process on a fixture directory this skill creates.
 
 `doctor` runs `uv sync --locked` and checks Python >= 3.11. Ready means the
 sync exited 0. It also reports which of semgrep, trivy, gitleaks and docker are
-present: `uv sync` installs Semgrep; Trivy, Gitleaks and Docker usually are not.
+present. Semgrep must be there (`uv sync` installs it) or doctor FAILs. A missing
+Trivy or Gitleaks prints a SKIP line, so the run ends `PASS with SKIP`. `cli`
+runs the same scanner check when called on its own.
 
 ## Doctor
 
@@ -41,7 +43,7 @@ or Critical finding, and the clean one exits 0. Semgrep fetches its rules over
 the network, so `cli` needs network.
 
 `RESULT: PASS` means every check passed. `RESULT: PASS with SKIP` means
-something (today: the Docker image) was not exercised; say so in the PR.
+something (Trivy, Gitleaks or the Docker image when absent) was not exercised; say so in the PR.
 
 ## Evidence
 

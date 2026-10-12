@@ -54,8 +54,19 @@ doctor() {
 import sys
 sys.exit(0 if tuple(map(int, sys.argv[1].split("."))) >= (3, 11) else 1)
 PY
-  for t in semgrep trivy gitleaks docker; do
-    if command -v "$t" >/dev/null || { [ "$t" = semgrep ] && [ -x .venv/bin/semgrep ]; }; then echo "  info $t present"; else echo "  info $t absent"; fi
+  scanners || return 1
+  SCANNERS_CHECKED=1
+  if command -v docker >/dev/null; then echo "  info docker present"; else echo "  info docker absent"; fi
+}
+
+# Semgrep is a runtime dependency and must be there. Without Trivy or Gitleaks
+# Warden warns and still passes, so their coverage is reported as SKIP, not PASS.
+scanners() {
+  if [ -x .venv/bin/semgrep ] || command -v semgrep >/dev/null; then echo "  PASS semgrep present"; else echo "  FAIL semgrep missing (uv sync installs it)"; FAILED=1; return 1; fi
+  local t
+  for t in trivy gitleaks; do
+    if command -v "$t" >/dev/null; then echo "  PASS $t present ($(command -v "$t"))"
+    else echo "  SKIP $t not on PATH: Warden runs without it, so $t findings are unverified"; echo "skipped: $t absent" > "$ART/$t.skip"; SKIPPED=1; fi
   done
 }
 
@@ -74,6 +85,7 @@ test_gate() {
 # The real user path: `warden --project-root <dir>` on a throwaway project.
 # Semgrep must be installed (uv sync does) and fetches its rules over the network.
 cli() {
+  [ "${SCANNERS_CHECKED:-}" ] || scanners || return
   run cli-help uv run --no-sync warden --help
   expect "--help exits 0" "$ART/cli-help.exit" '^0$'
   expect "--help prints usage" "$ART/cli-help.stdout" '^usage: warden '
