@@ -4,6 +4,7 @@ Warden runs Trivy, Semgrep, Gitleaks and optional OWASP ZAP over a project, merg
 
 ## Commands
 
+- End-to-end verification with kept evidence: `.agents/skills/verify-warden/scripts/verify.sh all` (gate, then `warden` on a vulnerable and a clean throwaway project; see `.agents/skills/verify-warden/SKILL.md`).
 - Install as CI does: `uv sync --locked`
 - Pre-PR gate, CI's `quality` job in order. `uv lock --check` stands in for CI's `UV_LOCKED=1`, which fails on a `uv.lock` that drifted from `pyproject.toml` where a local `uv run` relocks silently:
 
@@ -67,7 +68,7 @@ Docs mirror the code exactly; change them in the same commit:
 - `install.sh`, `bin/warden` and `bin/warden.sh` stay mode `100755` (lost once, restored in `853f891`).
 - No CI runs Windows: `install.ps1`, `bin/warden.ps1`, `bin/warden.cmd` and the non-POSIX branches in `tooling.py` are unverified, so say so in the PR when you change them.
 - Semgrep 1.179 emits `MEDIUM`-style severities while `report-format.md` and `tests/fixtures/semgrep.json` still show `ERROR` and `WARNING`; `SEVERITY_ALIASES` maps both vocabularies, so keep both.
-- `ruff format` skips `*.md` on purpose: ruff 0.16 formats Markdown, and `.agents/skills/**` is vendored and hash-locked in `skills-lock.json`. Edit Markdown by hand. The vendored `dataverse-python-production-code` skill targets an unrelated SDK and does not apply here.
+- `ruff format` skips `*.md` on purpose: ruff 0.16 formats Markdown. Edit Markdown by hand.
 - No check is required on `main`, so `gh pr merge` succeeds with red checks: confirm `quality` and `scan` are green first.
 
 ## Docs
