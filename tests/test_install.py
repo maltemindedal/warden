@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import io
+import json
 import os
 import re
 import shutil
@@ -247,6 +248,50 @@ def test_the_installer_and_the_dockerfile_pin_the_same_versions_and_digests() ->
         install, r'(?m)^UV_VERSION="(\S+)"'
     )
     assert len(_pins(install, r'TRIVY_SHA256="([0-9a-f]{64})"')) == 2
+
+
+def _cloud_install_text() -> str:
+    """The cloud-agent install script, whether it is inlined or a file the command names."""
+    payload: object = json.loads(
+        (REPO_ROOT / ".cursor/environment.json").read_text(encoding="utf-8")
+    )
+    if not isinstance(payload, dict):
+        raise AssertionError("environment.json is not an object")
+    command = payload["install"]
+    if not isinstance(command, str):
+        raise AssertionError("environment.json install is not a string")
+    if command.startswith("bash .cursor/"):
+        script = (REPO_ROOT / command.removeprefix("bash ").strip()).read_text(encoding="utf-8")
+        if not isinstance(script, str):
+            raise AssertionError("the cloud install script is not text")
+        return script
+    return command
+
+
+def test_the_cloud_install_takes_the_uv_version_from_install_sh(tmp_path: Path) -> None:
+    """A literal in the cloud install is a fourth uv pin, and the other pin tests do not read it.
+
+    Dependabot bumps the Dockerfile's uv stage alone. install.sh is the copy those tests
+    already compare. The cloud install has to read that copy, or a mismatched literal
+    installs a different uv and nothing fails.
+    """
+    (tmp_path / "install.sh").write_text('UV_VERSION="9.9.9"\n', encoding="utf-8")
+    lines: list[str] = []
+    for line in _cloud_install_text().splitlines():
+        lines.append(line)
+        if line.startswith("UV_VERSION="):
+            break
+    else:
+        raise AssertionError("the cloud install never assigns UV_VERSION")
+    completed = subprocess.run(
+        ["bash", "-c", "\n".join(lines) + '\nprintf %s "$UV_VERSION"'],
+        cwd=tmp_path,
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+    assert completed.returncode == 0, completed.stderr
+    assert completed.stdout == "9.9.9"
 
 
 def test_install_ps1_pins_the_same_uv_as_install_sh_and_the_dockerfile() -> None:
