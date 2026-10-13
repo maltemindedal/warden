@@ -251,7 +251,6 @@ def test_the_installer_and_the_dockerfile_pin_the_same_versions_and_digests() ->
 
 
 def _cloud_install_text() -> str:
-    """The cloud-agent install script, whether it is inlined or a file the command names."""
     payload: object = json.loads(
         (REPO_ROOT / ".cursor/environment.json").read_text(encoding="utf-8")
     )
@@ -269,12 +268,7 @@ def _cloud_install_text() -> str:
 
 
 def test_the_cloud_install_takes_the_uv_version_from_install_sh(tmp_path: Path) -> None:
-    """A literal in the cloud install is a fourth uv pin, and the other pin tests do not read it.
-
-    Dependabot bumps the Dockerfile's uv stage alone. install.sh is the copy those tests
-    already compare. The cloud install has to read that copy, or a mismatched literal
-    installs a different uv and nothing fails.
-    """
+    """A hardcoded UV_VERSION keeps installing 0.12.23 when install.sh says 9.9.9."""
     (tmp_path / "install.sh").write_text('UV_VERSION="9.9.9"\n', encoding="utf-8")
     lines: list[str] = []
     for line in _cloud_install_text().splitlines():

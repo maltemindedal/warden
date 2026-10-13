@@ -25,6 +25,10 @@ Warden runs Trivy, Semgrep, Gitleaks and optional OWASP ZAP over a project, merg
   docker build -t warden:local . && docker run --rm --user "$(id -u):$(id -g)" -v "$PWD:/src" warden:local
   ```
 
+## Cursor Cloud specific instructions
+
+CI's quality job sets `UV_LOCKED=1`. A cloud agent shell does not set that variable. `uv run` then rewrites `uv.lock` when the lockfile has drifted from `pyproject.toml`. Run `uv run --locked` for the checks in Commands.
+
 ## Conventions
 
 Commits and PRs:
