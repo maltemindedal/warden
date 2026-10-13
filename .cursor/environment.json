@@ -1,0 +1,4 @@
+{
+  "name": "Warden",
+  "install": "set -euo pipefail\nUV_VERSION=0.12.23\ncurrent=\"\"\nif command -v uv >/dev/null 2>&1; then\n  current=\"$(uv --version | awk '{print $2}')\"\nfi\nif [ \"$current\" != \"$UV_VERSION\" ]; then\n  curl -LsSf \"https://astral.sh/uv/${UV_VERSION}/install.sh\" | UV_NO_MODIFY_PATH=1 sh\n  sudo ln -sfn \"${HOME}/.local/bin/uv\" /usr/local/bin/uv\n  if [ -x \"${HOME}/.local/bin/uvx\" ]; then\n    sudo ln -sfn \"${HOME}/.local/bin/uvx\" /usr/local/bin/uvx\n  fi\n  hash -r\nfi\nuv python install 3.11\nuv sync --locked\n"
+}
