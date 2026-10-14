@@ -4,7 +4,7 @@ Write-Host "Installing Warden..." -ForegroundColor Cyan
 $UvBinPath = Join-Path $HOME ".local\bin"
 
 # uv is installed at a pinned version. install.sh pins the same version.
-$UvVersion = "0.12.23"
+$UvVersion = "0.13.0"
 
 if (!(Get-Command docker -ErrorAction SilentlyContinue)) {
     Write-Error "Missing requirement: Docker. Please install it first."
