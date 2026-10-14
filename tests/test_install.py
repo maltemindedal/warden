@@ -268,7 +268,7 @@ def _cloud_install_text() -> str:
 
 
 def test_the_cloud_install_takes_the_uv_version_from_install_sh(tmp_path: Path) -> None:
-    """A hardcoded UV_VERSION keeps installing 0.12.23 when install.sh says 9.9.9."""
+    """A hardcoded UV_VERSION keeps installing 0.13.0 when install.sh says 9.9.9."""
     (tmp_path / "install.sh").write_text('UV_VERSION="9.9.9"\n', encoding="utf-8")
     lines: list[str] = []
     for line in _cloud_install_text().splitlines():
