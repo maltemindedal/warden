@@ -90,7 +90,8 @@ def test_load_json_reports_a_parse_failure_as_a_value(tmp_path: Path) -> None:
     loaded = load_json(report)
 
     assert loaded.data is None
-    assert loaded.error
+    assert loaded.error is not None
+    assert loaded.error != ""
     assert loaded.found
 
 

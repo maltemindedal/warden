@@ -67,7 +67,7 @@ def judge(findings: Sequence[Finding]) -> Verdict:
 def _format_breakdown(items: Mapping[str, int], order: Sequence[str]) -> str:
     if not items:
         return ""
-    return ", ".join(f"{key}: {items[key]}" for key in order if items.get(key))
+    return ", ".join(f"{key}: {items[key]}" for key in order if items.get(key, 0) != 0)
 
 
 def _status_summary(failed: bool) -> tuple[str, str, str]:
