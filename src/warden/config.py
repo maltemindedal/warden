@@ -313,7 +313,11 @@ def resolve_config(
             warnings.append(f"{path.name} is not a regular file: using the defaults.")
     except (OSError, UnicodeDecodeError, ValueError) as error:
         raw = {}
-        reason = error.strerror if isinstance(error, OSError) and error.strerror else error
+        reason = (
+            error.strerror
+            if isinstance(error, OSError) and error.strerror is not None and error.strerror != ""
+            else error
+        )
         warnings.append(f"{path.name} could not be read ({reason}): using the defaults.")
 
     exclude_dirs = _without_nul(_extract_exclude_dirs(raw.get("exclude_dirs")), notes)
@@ -332,7 +336,7 @@ def resolve_config(
             resolved_url
             and scans_url
             and config_path is None
-            and os.environ.get("GITHUB_WORKSPACE")
+            and os.environ.get("GITHUB_WORKSPACE", "") != ""
         ):
             warnings.append(
                 f"target_url in {CONFIG_FILENAME} is ignored because GITHUB_WORKSPACE is set "

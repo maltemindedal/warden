@@ -87,7 +87,9 @@ def _incomplete(
 
 def _describe(error: OSError) -> str:
     return (
-        f"{error.filename}: {error.strerror}" if error.filename and error.strerror else str(error)
+        f"{error.filename}: {error.strerror}"
+        if error.filename and error.strerror is not None and error.strerror != ""
+        else str(error)
     )
 
 
