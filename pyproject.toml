@@ -11,7 +11,7 @@ license = "MIT"
 license-files = ["LICENSE"]
 requires-python = ">=3.11"
 authors = [{ name = "maltemindedal" }]
-dependencies = ["rich>=13.9,<16", "semgrep>=1.180.0,<2"]
+dependencies = ["rich>=13.9,<16", "semgrep>=1.182.1,<2"]
 
 [project.scripts]
 warden = "warden.cli:main"
