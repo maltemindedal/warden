@@ -425,6 +425,34 @@ def _cloud_install_text() -> str:
     return command
 
 
+def _cloud_archive_arm(machine: str) -> str:
+    """The case arm `.cursor/cloud-install.sh` copies for `machine`."""
+    script = _cloud_install_text()
+    start = script.index("awk -v arch=")
+    quote = script.index("'", start)
+    program = script[quote + 1 : script.index("' install.sh", quote)]
+    completed = subprocess.run(
+        ["awk", "-v", f"arch={machine}", program, str(INSTALL_SH)],
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+    assert completed.returncode == 0, completed.stderr
+    return completed.stdout
+
+
+def test_the_cloud_install_still_reads_the_linux_archive_pins() -> None:
+    """A Darwin `x86_64)` label is the first arm the cloud awk copies, so the pins vanish."""
+    x86_64 = _cloud_archive_arm("x86_64")
+    arm64 = _cloud_archive_arm("arm64")
+
+    assert 'TRIVY_ARCH="Linux-64bit"' in x86_64
+    assert 'GITLEAKS_ARCH="linux_x64"' in x86_64
+    assert _INTEL_MAC not in x86_64
+    assert 'TRIVY_ARCH="Linux-ARM64"' in arm64
+    assert 'GITLEAKS_ARCH="linux_arm64"' in arm64
+
+
 def test_the_cloud_install_takes_the_uv_version_from_install_sh(tmp_path: Path) -> None:
     """A hardcoded UV_VERSION keeps installing 0.13.5 when install.sh says 9.9.9."""
     (tmp_path / "install.sh").write_text('UV_VERSION="9.9.9"\n', encoding="utf-8")
