@@ -4,8 +4,8 @@ Warden orchestrates Trivy, Semgrep, Gitleaks, and OWASP ZAP, merges their
 output into a single report, and exits non-zero when it finds anything Critical
 or High. Each of those tools has its own flags, output format, and severity
 vocabulary; Warden reconciles them so you can gate a build on one exit code
-instead of four. It runs the same way on Windows, macOS, and Linux, locally or
-in CI.
+instead of four. It runs on Linux (x86_64, arm64), macOS on Apple Silicon, and
+Windows, locally or in CI. Intel Macs are not supported.
 
 | Tool | Finds |
 | --- | --- |
