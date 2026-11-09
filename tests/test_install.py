@@ -63,6 +63,58 @@ def _install(
     return completed.stdout
 
 
+_INTEL_MAC = "Intel Macs are not supported. Apple Silicon (arm64) is supported."
+_NATIVE_ARM = "Rerun this command from a native arm64 terminal."
+
+
+def _write_executable(directory: Path, name: str, body: str) -> None:
+    path = directory / name
+    path.write_text(body, encoding="utf-8")
+    path.chmod(0o755)
+
+
+def _stub_host(stubs: Path, *, kernel: str, machine: str, translated: str | None) -> None:
+    _write_executable(
+        stubs,
+        "uname",
+        "#!/bin/sh\n"
+        'case "$1" in\n'
+        f'\t-s) echo "{kernel}" ;;\n'
+        f'\t-m) echo "{machine}" ;;\n'
+        "\t*) exit 1 ;;\n"
+        "esac\n",
+    )
+    if translated is None:
+        body = "#!/bin/sh\nexit 1\n"
+    else:
+        body = (
+            "#!/bin/sh\n"
+            '[ "$1" = "-n" ] && [ "$2" = "sysctl.proc_translated" ] || exit 1\n'
+            f'echo "{translated}"\n'
+        )
+    _write_executable(stubs, "sysctl", body)
+
+
+def _log_stub(stubs: Path, name: str, log: Path) -> None:
+    _write_executable(
+        stubs,
+        name,
+        f'#!/bin/sh\nprintf "%s\\n" "{name}" "$@" >> "{log}"\n',
+    )
+
+
+def _run_warden(stubs: Path, *args: str) -> subprocess.CompletedProcess[str]:
+    return subprocess.run(
+        ["bash", str(REPO_ROOT / "bin" / "warden.sh"), *args],
+        capture_output=True,
+        check=False,
+        cwd=stubs.parent,
+        env={"PATH": f"{stubs}:/usr/bin:/bin"},
+        text=True,
+        timeout=30,
+    )
+
+
 def test_the_uv_bin_dir_is_added_to_the_profile_once_when_it_is_not_on_path(
     tmp_path: Path, stubs: Path
 ) -> None:
@@ -152,6 +204,112 @@ def test_a_zsh_login_shell_gets_zshrc_wherever_zsh_is_installed(
 
     assert (home / ".zshrc").is_file()
     assert not (home / ".bashrc").exists()
+
+
+def test_install_sh_on_darwin_x86_64_exits_before_any_check_download_or_install(
+    tmp_path: Path, stubs: Path
+) -> None:
+    """An Intel Mac used to reach uv and could then print PASS with a broken Semgrep."""
+    home = tmp_path / "home"
+    home.mkdir()
+    log = tmp_path / "calls.log"
+    _stub_host(stubs, kernel="Darwin", machine="x86_64", translated=None)
+    _log_stub(stubs, "docker", log)
+    _log_stub(stubs, "uv", log)
+
+    refused = _run_install(home, stubs)
+
+    assert refused.returncode == 1
+    assert _INTEL_MAC in refused.stdout
+    assert _NATIVE_ARM not in refused.stdout
+    assert "Detected:" not in refused.stdout
+    assert "Missing requirement: Docker" not in refused.stdout
+    assert "Installation complete!" not in refused.stdout
+    assert not log.exists()
+
+    (stubs / "docker").unlink()
+    refused_without_docker = _run_install(home, stubs)
+
+    assert refused_without_docker.returncode == 1
+    assert _INTEL_MAC in refused_without_docker.stdout
+    assert "Missing requirement: Docker" not in refused_without_docker.stdout
+    assert not log.exists()
+
+
+def test_install_sh_on_darwin_x86_64_under_rosetta_names_a_native_terminal(
+    tmp_path: Path, stubs: Path
+) -> None:
+    """A Rosetta shell reports x86_64 and would install the same broken Semgrep sdist."""
+    home = tmp_path / "home"
+    home.mkdir()
+    log = tmp_path / "calls.log"
+    _stub_host(stubs, kernel="Darwin", machine="x86_64", translated="1")
+    _log_stub(stubs, "docker", log)
+    _log_stub(stubs, "uv", log)
+
+    refused = _run_install(home, stubs)
+
+    assert refused.returncode == 1
+    assert refused.stdout.index(_INTEL_MAC) < refused.stdout.index(_NATIVE_ARM)
+    assert "Detected:" not in refused.stdout
+    assert not log.exists()
+
+
+def test_install_sh_on_darwin_arm64_gets_past_the_os_check(tmp_path: Path, stubs: Path) -> None:
+    """Apple Silicon still installs. A failing sysctl on PATH must not abort that path."""
+    home = tmp_path / "home"
+    home.mkdir()
+    _stub_host(stubs, kernel="Darwin", machine="arm64", translated=None)
+
+    output = _install(home, stubs)
+
+    assert "Detected: Mac" in output
+    assert _INTEL_MAC not in output
+    assert "Installation complete!" in output
+
+
+def test_install_sh_on_linux_x86_64_still_installs(tmp_path: Path, stubs: Path) -> None:
+    """The Linux x86_64 archive map is a tarball name, not a support refusal."""
+    home = tmp_path / "home"
+    home.mkdir()
+    _stub_host(stubs, kernel="Linux", machine="x86_64", translated=None)
+
+    output = _install(home, stubs)
+
+    assert "Detected: Linux" in output
+    assert _INTEL_MAC not in output
+    assert "Installation complete!" in output
+
+
+def test_warden_sh_on_darwin_x86_64_exits_without_calling_uv(tmp_path: Path, stubs: Path) -> None:
+    """The launcher installs Semgrep through `uv run`, so it stops on the same hosts."""
+    log = tmp_path / "calls.log"
+    _stub_host(stubs, kernel="Darwin", machine="x86_64", translated=None)
+    for name in ("uv", "python3", "python"):
+        _log_stub(stubs, name, log)
+
+    refused = _run_warden(stubs, "--url", "http://x")
+
+    assert refused.returncode == 1
+    assert _INTEL_MAC in refused.stdout
+    assert _NATIVE_ARM not in refused.stdout
+    assert not log.exists()
+
+
+def test_warden_sh_on_darwin_x86_64_under_rosetta_uses_the_same_message(
+    tmp_path: Path, stubs: Path
+) -> None:
+    """The launcher tells a translated shell to rerun from a native arm64 terminal."""
+    log = tmp_path / "calls.log"
+    _stub_host(stubs, kernel="Darwin", machine="x86_64", translated="1")
+    for name in ("uv", "python3", "python"):
+        _log_stub(stubs, name, log)
+
+    refused = _run_warden(stubs, "--url", "http://x")
+
+    assert refused.returncode == 1
+    assert refused.stdout.index(_INTEL_MAC) < refused.stdout.index(_NATIVE_ARM)
+    assert not log.exists()
 
 
 def _fetch_verified(
@@ -265,6 +423,34 @@ def _cloud_install_text() -> str:
             raise AssertionError("the cloud install script is not text")
         return script
     return command
+
+
+def _cloud_archive_arm(machine: str) -> str:
+    """The case arm `.cursor/cloud-install.sh` copies for `machine`."""
+    script = _cloud_install_text()
+    start = script.index("awk -v arch=")
+    quote = script.index("'", start)
+    program = script[quote + 1 : script.index("' install.sh", quote)]
+    completed = subprocess.run(
+        ["awk", "-v", f"arch={machine}", program, str(INSTALL_SH)],
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+    assert completed.returncode == 0, completed.stderr
+    return completed.stdout
+
+
+def test_the_cloud_install_still_reads_the_linux_archive_pins() -> None:
+    """A Darwin `x86_64)` label is the first arm the cloud awk copies, so the pins vanish."""
+    x86_64 = _cloud_archive_arm("x86_64")
+    arm64 = _cloud_archive_arm("arm64")
+
+    assert 'TRIVY_ARCH="Linux-64bit"' in x86_64
+    assert 'GITLEAKS_ARCH="linux_x64"' in x86_64
+    assert _INTEL_MAC not in x86_64
+    assert 'TRIVY_ARCH="Linux-ARM64"' in arm64
+    assert 'GITLEAKS_ARCH="linux_arm64"' in arm64
 
 
 def test_the_cloud_install_takes_the_uv_version_from_install_sh(tmp_path: Path) -> None:

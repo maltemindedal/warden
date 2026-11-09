@@ -2,6 +2,21 @@
 
 Symptoms and their causes, in rough order of how often they come up.
 
+## Intel Macs are not supported
+
+`install.sh` and `bin/warden.sh` exit 1 on Darwin x86_64 before they check for
+Docker, download tools, or install Warden. Intel Macs are not supported because
+Semgrep does not publish a build for them. Warden supports Linux (x86_64 and
+arm64), macOS on Apple Silicon, and Windows.
+
+```
+Intel Macs are not supported. Apple Silicon (arm64) is supported.
+```
+
+If the next line tells you to rerun from a native arm64 terminal, the shell is
+running under Rosetta. Open a terminal that is not set to open with Rosetta and
+run the same command again.
+
 ## The `warden` command is not found
 
 The installer puts the executable in `~/.local/bin` and appends that directory
