@@ -34,7 +34,9 @@ install yourself must be 0.37 or newer.
 
 Clone the repository and run the installer for your platform.
 
-On macOS or Linux:
+Intel Macs are not supported because Semgrep does not publish a build for them.
+
+On Linux or an Apple Silicon Mac:
 
 ```bash
 git clone https://github.com/maltemindedal/warden.git
@@ -57,9 +59,9 @@ if it isn't already there.
 
 What it downloads is pinned. On Linux, uv comes from its versioned installer, and
 Trivy and Gitleaks are fetched at a fixed version and installed only if the archive
-matches a SHA-256 recorded in `install.sh` (on macOS they come from Homebrew, on
-Windows from Scoop or Chocolatey, at whatever version those carry). Warden's own
-dependencies are resolved when you install, not taken from `uv.lock`.
+matches a SHA-256 recorded in `install.sh` (on Apple Silicon Macs they come from
+Homebrew, on Windows from Scoop or Chocolatey, at whatever version those carry).
+Warden's own dependencies are resolved when you install, not taken from `uv.lock`.
 
 If the installer says it added a directory to your `PATH`, or that your shell
 profile already does, restart your terminal before continuing.

@@ -21,7 +21,20 @@ echo -e "${CYAN}Installing Warden...${NC}"
 OS="$(uname -s)"
 case "$OS" in
 	Linux*)  OS_TYPE="Linux" ;;
-	Darwin*) OS_TYPE="Mac" ;;
+	Darwin*)
+		if [ "$(uname -m)" = "x86_64" ]; then
+			translated=""
+			if probe="$(sysctl -n sysctl.proc_translated 2>/dev/null)"; then
+				translated="$probe"
+			fi
+			echo "Intel Macs are not supported. Apple Silicon (arm64) is supported."
+			if [ "$translated" = "1" ]; then
+				echo "Rerun this command from a native arm64 terminal."
+			fi
+			exit 1
+		fi
+		OS_TYPE="Mac"
+		;;
 	*)       echo -e "${RED}Unsupported OS: $OS${NC}"; exit 1 ;;
 esac
 echo "   Detected: $OS_TYPE"

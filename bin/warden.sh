@@ -1,6 +1,22 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
+case "$(uname -s)" in
+	Darwin*)
+		if [ "$(uname -m)" = "x86_64" ]; then
+			translated=""
+			if probe="$(sysctl -n sysctl.proc_translated 2>/dev/null)"; then
+				translated="$probe"
+			fi
+			echo "Intel Macs are not supported. Apple Silicon (arm64) is supported."
+			if [ "$translated" = "1" ]; then
+				echo "Rerun this command from a native arm64 terminal."
+			fi
+			exit 1
+		fi
+		;;
+esac
+
 SOURCE="${BASH_SOURCE[0]}"
 while [ -h "$SOURCE" ]; do
 	DIR="$(cd -P "$(dirname "$SOURCE")" && pwd)"
