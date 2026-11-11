@@ -21,14 +21,6 @@ TOO_LONG = "9" * 5_000
 """An integer past the 4,300 digits `json.loads` will convert."""
 
 
-@pytest.fixture(autouse=True)
-def _plain_console(monkeypatch: pytest.MonkeyPatch) -> None:
-    """rich reads these when a Console is created, so without this the output depends on them."""
-    monkeypatch.delenv("FORCE_COLOR", raising=False)
-    monkeypatch.delenv("TTY_COMPATIBLE", raising=False)
-    monkeypatch.setenv("COLUMNS", "200")
-
-
 def _copy_fixture(name: str, destination: Path) -> None:
     shutil.copyfile(FIXTURE_DIR / name, destination / name)
 
