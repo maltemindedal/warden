@@ -71,8 +71,8 @@ Docs mirror the code exactly; change them in the same commit:
 - The Trivy download in `docker build` can time out (curl exit 28): rerun the build. BuildKit's `SecretsUsedInArgOrEnv` warning on `GIT_CONFIG_KEY_0` is a false positive; that variable turns off the scanned repo's `core.fsmonitor`.
 - `install.sh`, `bin/warden` and `bin/warden.sh` stay mode `100755` (lost once, restored in `853f891`).
 - No CI runs Windows: `install.ps1`, `bin/warden.ps1`, `bin/warden.cmd` and the non-POSIX branches in `tooling.py` are unverified, so say so in the PR when you change them.
-- Semgrep 1.179 emits `MEDIUM`-style severities while `report-format.md` and `tests/fixtures/semgrep.json` still show `ERROR` and `WARNING`; `SEVERITY_ALIASES` maps both vocabularies, so keep both.
-- `ruff format` skips `*.md` on purpose: ruff 0.16 formats Markdown. Edit Markdown by hand.
+- Semgrep 1.184.0, the locked version, serializes `MEDIUM` as well as `ERROR` and `WARNING`. `tests/fixtures/semgrep.json` still shows `WARNING`. `SEVERITY_ALIASES` maps both vocabularies, so keep both.
+- `ruff format` skips `*.md` on purpose. Ruff 0.17.4, the locked version, formats Python code blocks inside Markdown. Edit Markdown by hand.
 - No check is required on `main`, so `gh pr merge` succeeds with red checks: confirm `quality` and `scan` are green first.
 
 ## Docs

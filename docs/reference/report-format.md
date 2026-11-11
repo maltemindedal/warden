@@ -115,8 +115,9 @@ becomes `UNKNOWN`.
 
 Two per-tool rules are worth knowing:
 
-- **Semgrep** reports `ERROR` and `WARNING`. These become `HIGH` and `MEDIUM`,
-  respectively. A Semgrep `ERROR` finding will fail your build.
+- **Semgrep** 1.184.0's severity names include `ERROR`, `WARNING`, `HIGH`, and
+  `MEDIUM`. `ERROR` and `HIGH` become `HIGH`. `WARNING` and `MEDIUM` become
+  `MEDIUM`. An `ERROR` or `HIGH` finding fails the build.
 - **Gitleaks** findings are always assigned `CRITICAL`, regardless of what the
   rule was. Any detected secret fails the build.
 
