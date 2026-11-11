@@ -2,7 +2,9 @@ from __future__ import annotations
 
 import io
 import json
+import os
 import shutil
+import subprocess
 import sys
 from pathlib import Path
 
@@ -240,6 +242,48 @@ def test_an_unusable_dast_url_is_a_warning_and_zap_is_skipped(
     assert "[4/4] Skipping ZAP" in output
     assert "\x1b" not in output
     assert "\u202e" not in output
+
+
+@pytest.mark.parametrize(
+    ("variable", "value"),
+    [("FORCE_COLOR", "0"), ("TTY_COMPATIBLE", "1")],
+)
+def test_a_color_forcing_caller_environment_leaves_the_dast_url_cases_green(
+    variable: str, value: str
+) -> None:
+    """rich emits ANSI when FORCE_COLOR is set or TTY_COMPATIBLE is 1.
+
+    The unusable-URL cases require a summary with no escape byte. A guard
+    that only one module loads leaves a caller who exports either name able
+    to fail those cases. Guards issue 60.
+    """
+    env = os.environ.copy()
+    for name in ("FORCE_COLOR", "TTY_COMPATIBLE", "NO_COLOR", "PYTEST_CURRENT_TEST"):
+        env.pop(name, None)
+    env[variable] = value
+    env["TERM"] = "xterm-256color"
+
+    completed = subprocess.run(
+        [
+            sys.executable,
+            "-m",
+            "pytest",
+            "tests/test_cli.py",
+            "-k",
+            "unusable_dast",
+            "-p",
+            "no:cacheprovider",
+            "-q",
+        ],
+        cwd=Path(__file__).parents[1],
+        env=env,
+        capture_output=True,
+        text=True,
+        timeout=60,
+        check=False,
+    )
+
+    assert completed.returncode == 0, completed.stdout + completed.stderr
 
 
 def test_a_usable_dast_url_is_announced_and_scanned(
