@@ -94,14 +94,15 @@ uv add --dev <package>
 
 One constraint in `[tool.uv]` is deliberate and will affect you:
 
-- **`override-dependencies = ["mcp>=1.28.1,<2"]`** overrides the
-  `mcp==1.23.3` pin of Semgrep 1.146 to 1.172 (older releases pin older mcp
-  releases or none), which carries known advisories. Warden uses Semgrep's CLI scanner and never its MCP server, so the
-  pin is overridden to a patched release. The cap at 2 is needed because mcp 2.x
-  renamed the modules Semgrep imports, which makes `semgrep` fail at startup.
-  From Semgrep 1.173 the pin is `mcp==1.29.0` (patched), so with such a Semgrep
-  locked the override only serves as the cap, and a relock can move mcp past that
-  pin: use `uv lock --upgrade-package mcp==<the pin>` to keep them in step.
+- `override-dependencies = ["mcp>=1.28.1,<2"]` replaces Semgrep's own `mcp`
+  requirement. Warden does not import `mcp`. Semgrep 1.146.0 through 1.172.0
+  require `mcp==1.23.3`. Semgrep 1.173.0 through 1.184.0 require `mcp==1.29.0`.
+  `uv.lock` locks Semgrep at 1.184.0 and `mcp` at 1.30.0. The sdist for that
+  Semgrep release requires `mcp==1.29.0`. The override's range includes 1.30.0.
+  The upper bound is `<2`. mcp 2.x renamed the modules Semgrep imports, so
+  `semgrep` fails at startup on a 2.x resolve.
+  To put `mcp` back on Semgrep's requirement, run
+  `uv lock --upgrade-package mcp==1.29.0`.
 
 Commit `uv.lock` alongside any change to `pyproject.toml` that affects resolution:
 dependency bounds, `requires-python`, the project version or `[tool.uv]`
