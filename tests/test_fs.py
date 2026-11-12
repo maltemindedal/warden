@@ -6,6 +6,7 @@ from __future__ import annotations
 import os
 import subprocess
 import sys
+import threading
 from pathlib import Path
 
 import pytest
@@ -173,6 +174,39 @@ def test_append_line_writes_nothing_where_there_is_no_text_file_of_the_projects_
     assert not (tmp_path / "missing").exists()
     assert victim.read_text(encoding="utf-8") == "keep\n"
     assert utf16.read_bytes() == "*.log\n".encode("utf-16")
+
+
+@needs_named_pipes
+def test_the_append_neither_blocks_on_nor_writes_into_a_pipe_swapped_in_after_the_read(
+    tmp_path: Path,
+) -> None:
+    """`append_line` reads `.gitignore` as a regular file and then opens the name again to write.
+    A project that swaps a named pipe in between had the write open block for ever with no
+    reader, and had the line written into the pipe with one. The second half is run on its own
+    here, in a thread, because the swap is a race no test can time."""
+    pipe = tmp_path / ".gitignore"
+    os.mkfifo(pipe)
+    outcomes: list[object] = []
+
+    def append() -> None:
+        outcomes.append(fs._append(pipe, b".security_reports/\n"))
+
+    no_reader = threading.Thread(target=append, daemon=True)
+    no_reader.start()
+    no_reader.join(timeout=10)
+    reader = os.open(pipe, os.O_RDONLY | os.O_NONBLOCK)
+    try:
+        with_reader = threading.Thread(target=append, daemon=True)
+        with_reader.start()
+        with_reader.join(timeout=10)
+        written = os.read(reader, 100)
+    finally:
+        os.close(reader)
+
+    assert not no_reader.is_alive() and not with_reader.is_alive()
+    assert isinstance(outcomes[0], fs.Unwritable)
+    assert outcomes[1] == fs.NotRegular("a named pipe")
+    assert written == b""
 
 
 def test_an_owned_file_replaces_a_symlink_and_a_taken_as_given_one_writes_through_it(

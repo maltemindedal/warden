@@ -274,9 +274,23 @@ def append_line(path: Path, line: str) -> AppendOutcome:
     if any(existing.strip() == line for existing in lines):
         return AlreadyThere()
     lead = "\n" if lines and lines[-1].strip() else ""
+    return _append(path, f"{lead}{line}\n".encode())
+
+
+def _append(path: Path, data: bytes) -> Appended | NotRegular | Unwritable:
+    """Write `data` at the end of the regular file at `path`, which is not created.
+
+    The name was a regular file when `append_line` read it, and the project can swap it since.
+    A symlink is not followed, and the open does not block, so a named pipe put there with no
+    reader fails it instead of hanging the run. The kind is then checked on the open descriptor
+    before anything is written, as `read_bytes` checks it.
+    """
     try:
-        with _opened(path, os.O_WRONLY | os.O_APPEND | _NO_FOLLOW, "ab") as handle:
-            handle.write(f"{lead}{line}\n".encode())
+        with _opened(path, os.O_WRONLY | os.O_APPEND | _NO_FOLLOW | _NO_BLOCK, "ab") as handle:
+            opened = os.fstat(handle.fileno()).st_mode
+            if not stat.S_ISREG(opened):
+                return NotRegular(_kind(opened))
+            handle.write(data)
     except OSError as error:
         return Unwritable(_reason(error))
     return Appended()

@@ -56,8 +56,8 @@ def _parse_args(argv: list[str] | None = None) -> CliOptions:
         dest="strict",
         action="store_false",
         help=(
-            "Pass with a warning when a scanner that ran left no usable report, or no scanner "
-            "ran, instead of exiting 3"
+            "Turn strict off: a run in which a scanner left no usable report, or no scanner "
+            "ran, can pass instead of exiting 3"
         ),
     )
     parser.add_argument(

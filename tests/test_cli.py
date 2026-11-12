@@ -624,6 +624,28 @@ def test_strict_is_exit_3_when_no_scanner_ran_at_all(
     assert "STRICT: no scanner ran" in capsys.readouterr().out
 
 
+def test_no_strict_passes_a_run_in_which_no_scanner_ran_without_the_warning_help_once_promised(
+    tmp_path: Path, capsys: CaptureFixture[str]
+) -> None:
+    """`--help` said `--no-strict` would "pass with a warning" when no scanner ran. Nothing is
+    printed for that beyond each scanner's `Skipping` line, so the help says what happens."""
+    (tmp_path / ".warden.yaml").write_text(DISABLE_EVERY_TOOL, encoding="utf-8")
+
+    exit_code = _strict(tmp_path, RecordingRunner(), "--no-strict")
+    output = capsys.readouterr().out
+    with pytest.raises(SystemExit):
+        cli.main(["--help"])
+    described = " ".join(capsys.readouterr().out.split())
+
+    assert exit_code == 0
+    assert "Warning" not in output and "STRICT" not in output
+    assert "[4/4] Skipping ZAP" in output
+    assert (
+        "Turn strict off: a run in which a scanner left no usable report, or no scanner ran, "
+        "can pass instead of exiting 3"
+    ) in described
+
+
 def test_strict_leaves_a_failing_finding_as_exit_1_but_still_says_what_is_incomplete(
     tmp_path: Path, capsys: CaptureFixture[str]
 ) -> None:
