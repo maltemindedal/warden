@@ -54,13 +54,13 @@ def _strip_comment(line: str) -> str:
     it is closed on the same line; anywhere else it is an ordinary character. One pass, so a long
     line costs no more than its length, and a project controls the file.
     """
-    out: list[str] = []
+    pieces: list[str] = []
     first = last = ""  # the first and the last character of what is kept, ignoring spaces
     kept = 0  # how many characters that is
 
     def keep(text: str) -> None:
         nonlocal first, last, kept
-        out.append(text)
+        pieces.append(text)
         for character in text:
             if not character.isspace():
                 first = character if kept == 0 else first
@@ -84,7 +84,7 @@ def _strip_comment(line: str) -> str:
             break
         keep(character)
         index += 1
-    return "".join(out).rstrip("\r\n")
+    return "".join(pieces).rstrip("\r\n")
 
 
 def _parse_scalar(raw: str) -> ScalarValue:

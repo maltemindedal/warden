@@ -13,8 +13,9 @@ keep any of that from ending a run in a traceback:
 - Everything else raises one type. A lookup, a write, a delete or a directory Warden needs either
   works or raises `ProjectIOError`.
 
-`tests/test_boundaries.py` and ruff's `TID251` keep `open`, the `Path` methods that touch the
-disk, the `os` functions that do, `os.path` and `shutil` out of every other module.
+`tests/test_boundaries.py` and ruff's `TID251` keep `open`, every name a `Path` has and a
+`PurePath` lacks, the `os` functions that touch the disk, `os.path` and `shutil` out of every
+other module, and the terminal's names out of this one.
 
 Imports the standard library only.
 """

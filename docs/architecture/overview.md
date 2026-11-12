@@ -63,6 +63,7 @@ cannot hold. Callers pass plain strings and do not escape anything. rich gets
 text and a style name, never a markup string. No module reconfigures a stream,
 so the three entry points behave alike. `tests/test_boundaries.py` and the
 `TID251` entries in `pyproject.toml` fail on a `print`, a `sys.stdout`, a
+`sys.exit`, a `SystemExit`, a `logging`, `warnings` or `traceback` import, a
 `rich` import or an `argparse.ArgumentParser` anywhere else in the package.
 The scanners' own output is not covered: they inherit Warden's stdout and
 write to it directly.
@@ -85,9 +86,10 @@ around the two steps it has a better message for. Every console script's `main`
 is wrapped in `out.entry_point`, which turns one that nobody caught into
 `<prog>: error: <path>: <reason>` and exit `1`: a file-system problem no caller
 chose to survive fails the gate, and never prints a traceback.
-`tests/test_boundaries.py` fails on `open` or a `Path` method that touches the
-disk anywhere else in the package, the `TID251` entries on the `os` functions
-that do, and ty on a `match` that leaves an outcome out.
+`tests/test_boundaries.py` fails on `open` or a name that a `Path` has and a
+`PurePath` lacks anywhere else in the package, called or only referred to, the
+`TID251` entries on the `os` functions that touch the disk, and ty on a `match`
+that leaves an outcome out.
 
 `aggregate.py` once contained the parsing, rendering, and JSON-reading code.
 Those parts moved to separate modules when they began changing independently.
