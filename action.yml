@@ -9,8 +9,8 @@ inputs:
     description: "Path to a .warden.yaml OUTSIDE the checkout, used instead of the one in the repository (for pull request gates)"
     required: false
   strict:
-    description: "Fail (exit 3) when a scanner that ran left no usable report, or none ran"
-    default: "false"
+    description: "Fail (exit 3) when a scanner that ran left no usable report, or none ran. \"false\" passes --no-strict and lets an incomplete scan pass"
+    default: "true"
   upload-artifact:
     description: "Upload reports"
     default: "true"
@@ -36,8 +36,8 @@ runs:
         ARGS=()
         if [ -n "$URL" ]; then ARGS+=(--url "$URL"); fi
         case "$INPUT_STRICT" in
-          true | True | TRUE) ARGS+=(--strict) ;;
-          false | False | FALSE | "") ;;
+          true | True | TRUE | "") ;;
+          false | False | FALSE) ARGS+=(--no-strict) ;;
           *)
             echo "::error::The strict input must be true or false, not: $INPUT_STRICT"
             exit 1

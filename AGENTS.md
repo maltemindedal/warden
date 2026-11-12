@@ -19,10 +19,10 @@ Warden runs Trivy, Semgrep, Gitleaks and optional OWASP ZAP over a project, merg
   docker run --rm -v "$PWD:/src:ro" -e UV_LOCKED=1 ghcr.io/astral-sh/uv:python3.11-trixie-slim bash -c 'mkdir /w && tar -C /src --exclude=./.venv -cf - . | tar -C /w -xf - && cd /w && uv sync --locked -q && uv run ruff format --check . && uv run ruff check . && uv run ty check && uv run pytest -q'
   ```
 
-- CI's `scan` job, the self-scan with `--strict` (Docker and network: the build downloads Trivy and Gitleaks, Semgrep fetches its rules). It must exit 0, so a scanner that leaves no usable report fails it; its reports land in the git-ignored `security_audit.json` and `.security_reports/`:
+- CI's `scan` job, the self-scan, strict by default (Docker and network: the build downloads Trivy and Gitleaks, Semgrep fetches its rules). It must exit 0, so a scanner that leaves no usable report fails it; its reports land in the git-ignored `security_audit.json` and `.security_reports/`:
 
   ```bash
-  docker build -t warden:local . && docker run --rm --user "$(id -u):$(id -g)" -v "$PWD:/src" warden:local --strict
+  docker build -t warden:local . && docker run --rm --user "$(id -u):$(id -g)" -v "$PWD:/src" warden:local
   ```
 
 ## Cursor Cloud specific instructions
@@ -63,7 +63,7 @@ Docs mirror the code exactly; change them in the same commit:
 
 - Never pass `--url` to `warden`, or the workflow's `url` input: ZAP runs an active attack scan against that host. Exercise DAST code through `RecordingRunner` tests instead.
 - Green unit tests do not prove a scanner flag exists, because `RecordingRunner` only records the argv Warden built. A nonexistent Gitleaks `--exclude-path` passed the tests while silently disabling secret scanning (`f5388bc`). `tests/test_scanner_flags.py` checks every flag against the installed tool's `<subcommand> --help` and skips a tool that is not on PATH, so it only covers Semgrep and Docker on a plain host. CI's `scan` job runs it against the Trivy and Gitleaks binaries in the image and fails on a skip. After changing a command builder, run it with the pinned tools on PATH.
-- `uv sync` installs the real Semgrep, but Trivy and Gitleaks are usually absent on the host, so `uv run warden <dir>` prints PASS and exits 0 with only warnings. Add `--strict` (exit 3) or run the image to see a real result.
+- `uv sync` installs the real Semgrep, but Trivy and Gitleaks are usually absent on the host, so `uv run warden <dir>` exits 3 with `STRICT: Trivy, Gitleaks did not produce a usable report`. Put the pinned tools on PATH or run the image to see a real result; `--no-strict` only hides the gap, so never add it to make a gate pass.
 - Some tests read files as text, so their shape is load-bearing: `test_action.py` slices the `Run Warden` step of `action.yml` from `run: |` to the next `    - name:`, and `test_install.py` extracts `install.sh` functions up to a closing `}` line and regex-matches the version and SHA-256 lines.
 - Pins move together, and tests enforce it. uv: the `Dockerfile` `FROM` line, `UV_VERSION` in `install.sh`, `$UvVersion` in `install.ps1`. Trivy and Gitleaks: version plus amd64 and arm64 SHA-256 in the `Dockerfile` and `install.sh`, with digests from each release's checksums file. Dependabot's uv PR changes only the `Dockerfile`, so run `python3 tools/sync_pins.py` in that same PR (it rewrites both installers from the `Dockerfile`; `--check` only reports).
 - Relock one package at a time: `uv lock --upgrade-package <pkg>`. A blanket `uv lock --upgrade` moves `mcp` past Semgrep's own `mcp==` pin (the `override-dependencies` entry allows it), and mcp 2.x breaks Semgrep at import; `uv lock --upgrade-package mcp==<semgrep's pin>` restores it.

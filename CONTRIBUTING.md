@@ -132,8 +132,9 @@ manual dispatch:
 
 - `quality` runs the four checks above on Ubuntu with Python 3.11, installing
   with `uv sync --locked` and `UV_LOCKED=1`, so it fails on a stale `uv.lock`.
-- `scan` runs Warden against this repository with `strict: "true"` after
-  `quality` passes, so a scanner that leaves no usable report fails it (exit 3).
+- `scan` runs Warden against this repository through the action after
+  `quality` passes. The action's `strict` input defaults to `true`, so a scanner
+  that leaves no usable report fails it (exit 3).
   It then runs `tests/test_scanner_flags.py` against the Trivy and Gitleaks
   binaries copied out of the image it built, and fails if that test skips.
 

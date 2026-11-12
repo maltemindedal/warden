@@ -60,13 +60,13 @@ PY
 }
 
 # Semgrep is a runtime dependency and must be there. Without Trivy or Gitleaks
-# Warden warns and still passes, so their coverage is reported as SKIP, not PASS.
+# Warden exits 3, so their coverage is reported as SKIP and the clean run gets --no-strict.
 scanners() {
   if [ -x .venv/bin/semgrep ] || command -v semgrep >/dev/null; then echo "  PASS semgrep present"; else echo "  FAIL semgrep missing (uv sync installs it)"; FAILED=1; return 1; fi
   local t
   for t in trivy gitleaks; do
     if command -v "$t" >/dev/null; then echo "  PASS $t present ($(command -v "$t"))"
-    else echo "  SKIP $t not on PATH: Warden runs without it, so $t findings are unverified"; echo "skipped: $t absent" > "$ART/$t.skip"; SKIPPED=1; fi
+    else echo "  SKIP $t not on PATH: $t findings are unverified, and the clean run needs --no-strict"; echo "skipped: $t absent" > "$ART/$t.skip"; SKIPPED=1; fi
   done
 }
 
@@ -108,8 +108,10 @@ PY
   then echo "  PASS security_audit.json written with a High finding ($(cat "$ART/cli-vulnerable.report"))"
   else echo "  FAIL security_audit.json missing or has no High/Critical finding"; FAILED=1; fi
 
-  run cli-clean uv run --no-sync warden --project-root "$ok"
-  expect "clean project passes the gate (exit 0)" "$ART/cli-clean.exit" '^0$'
+  local strict=()
+  if [ -e "$ART/trivy.skip" ] || [ -e "$ART/gitleaks.skip" ]; then strict=(--no-strict); fi
+  run cli-clean uv run --no-sync warden --project-root "$ok" "${strict[@]}"
+  expect "clean project passes the gate (exit 0${strict:+, with ${strict[*]} as a scanner is absent})" "$ART/cli-clean.exit" '^0$'
   expect "clean project wrote its report" "$ok/security_audit.json" '"findings"'
 }
 

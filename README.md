@@ -66,6 +66,14 @@ Scan the current directory:
 warden
 ```
 
+A scanner that is missing, crashes or leaves no usable report fails the run with
+exit `3`, even when nothing was found. On a machine without Trivy or Gitleaks, pass
+`--no-strict` to let the scan pass with a warning:
+
+```bash
+warden --no-strict
+```
+
 Add a DAST scan against a running application:
 
 ```bash
