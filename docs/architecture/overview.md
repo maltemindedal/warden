@@ -84,15 +84,16 @@ other process produced.
 
 ## Design notes
 
-### Failure is non-fatal by default
+### A failed scanner does not abort the run, but fails it
 
-A scanner that is missing or crashes does not abort the run or fail the build.
-This allows Warden to return results from the scanners that completed. It also
-means that a green build does not prove every scanner ran. `tools_run` records
-which scanners left a usable report: one of the shape its parser reads, which
-`Scanner.reads_report` decides. `--strict` opts into the opposite: after the
-verdict, `cli` holds against the run every scanner it started that `tools_run`
-leaves out, and exits `3` unless a finding already made it `1`.
+A scanner that is missing or crashes does not abort the run. This allows Warden to
+return results from the scanners that completed. `tools_run` records which scanners
+left a usable report: one of the shape its parser reads, which
+`Scanner.reads_report` decides. After the verdict, `cli` holds against the run every
+scanner it started that `tools_run` leaves out, and exits `3` unless a finding
+already made it `1`. This strict check is the default because an opt-in one let a
+run with no scanner on `PATH` print `PASS`; `--no-strict` turns it off, and then a
+green build does not prove every scanner ran.
 `aggregate.generate_report` returns `tools_run` beside the verdict for this, so
 the gate takes its answer from the one read that also feeds the report, and the
 two cannot disagree about which scanners ran.

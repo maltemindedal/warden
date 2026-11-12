@@ -47,7 +47,7 @@ class Step:
         self._script.write_text(_run_step_script(), encoding="utf-8")
 
     def run(
-        self, *, url: str = "", strict: str = "false", config: str = ""
+        self, *, url: str = "", strict: str = "true", config: str = ""
     ) -> subprocess.CompletedProcess[str]:
         return subprocess.run(
             ["bash", "--noprofile", "--norc", "-eo", "pipefail", str(self._script)],
@@ -87,30 +87,43 @@ def test_by_default_warden_gets_no_arguments_and_the_workspace_is_mounted(step: 
 
 
 def test_the_url_and_strict_inputs_become_flags(step: Step) -> None:
-    step.run(url="https://example.com", strict="true")
+    step.run(url="https://example.com", strict="false")
 
-    assert step.warden_args() == ["--url", "https://example.com", "--strict"]
-
-
-@pytest.mark.parametrize("value", ["true", "True", "TRUE"])
-def test_strict_is_on_for_the_spellings_of_true(step: Step, value: str) -> None:
-    step.run(strict=value)
-
-    assert step.warden_args() == ["--strict"]
+    assert step.warden_args() == ["--url", "https://example.com", "--no-strict"]
 
 
-@pytest.mark.parametrize("value", ["false", "False", "FALSE", ""])
-def test_strict_is_off_for_the_spellings_of_false(step: Step, value: str) -> None:
+def test_the_strict_input_defaults_to_true() -> None:
+    """The input's default is what a workflow that never names `strict` gets; with `"false"`
+    there, a scanner that left no usable report passed the gate."""
+    text = ACTION_YML.read_text(encoding="utf-8")
+    strict_input = text[text.index("  strict:\n") : text.index("  upload-artifact:")]
+
+    assert '    default: "true"\n' in strict_input
+
+
+@pytest.mark.parametrize("value", ["true", "True", "TRUE", ""])
+def test_strict_is_on_for_the_spellings_of_true_and_for_an_empty_value(
+    step: Step, value: str
+) -> None:
+    """Strict is Warden's default, so the step passes no flag; an empty value, such as an unset
+    repository variable, keeps the gate closed rather than opening it."""
     step.run(strict=value)
 
     assert step.warden_args() == []
+
+
+@pytest.mark.parametrize("value", ["false", "False", "FALSE"])
+def test_strict_is_off_for_the_spellings_of_false(step: Step, value: str) -> None:
+    step.run(strict=value)
+
+    assert step.warden_args() == ["--no-strict"]
 
 
 @pytest.mark.parametrize("value", ["yes", "1", "on", " true", "truee"])
 def test_a_strict_value_that_is_neither_true_nor_false_is_an_error_not_a_silent_off(
     step: Step, value: str
 ) -> None:
-    """A gate that quietly runs without `--strict` because of a spelling would fail open."""
+    """A gate that quietly runs with `--no-strict` because of a spelling would fail open."""
     completed = step.run(strict=value)
 
     assert completed.returncode == 1

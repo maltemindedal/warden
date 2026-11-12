@@ -17,7 +17,10 @@ _MAX_TIMEOUT_SECONDS = 4_294_967
 """Windows takes a timeout in milliseconds as an unsigned 32-bit number, so nothing larger works."""
 
 EXIT_INCOMPLETE = 3
-"""`--strict`: no finding failed the build, but a scanner that ran left no usable report."""
+"""Strict, the default: no finding failed the build, but a scanner that ran left no usable
+report."""
+
+_OPT_OUT = "to accept an incomplete scan, pass --no-strict."
 
 
 def _parse_args(argv: list[str] | None = None) -> CliOptions:
@@ -40,9 +43,16 @@ def _parse_args(argv: list[str] | None = None) -> CliOptions:
     parser.add_argument(
         "--strict",
         action="store_true",
+        default=True,
+        help="Accepted for older pipelines; strict is the default",
+    )
+    parser.add_argument(
+        "--no-strict",
+        dest="strict",
+        action="store_false",
         help=(
-            "Exit 3 when a scanner that ran left no usable report, or no scanner ran, "
-            "instead of passing"
+            "Pass with a warning when a scanner that ran left no usable report, or no scanner "
+            "ran, instead of exiting 3"
         ),
     )
     parser.add_argument(
@@ -72,16 +82,17 @@ def _parse_args(argv: list[str] | None = None) -> CliOptions:
 def _incomplete(
     attempted: tuple[str, ...], tools_run: list[str], skipped_for_url: tuple[str, ...]
 ) -> str | None:
-    """What `--strict` holds against the run, or `None` if every scanner that was asked for ran.
+    """What strict mode holds against the run, or `None` if every scanner that was asked for ran.
 
     A scanner that was started counts as run exactly when the report lists it in `tools_run`, so
     the gate cannot pass on a report the aggregator did not read.
     """
     missing = [*(label for label in attempted if label not in tools_run), *skipped_for_url]
     if missing:
-        return f"{', '.join(missing)} did not produce a usable report, so the scan is incomplete."
+        names = ", ".join(missing)
+        return f"{names} did not produce a usable report, so the scan is incomplete; {_OPT_OUT}"
     if not attempted:
-        return "no scanner ran, so the scan is incomplete."
+        return f"no scanner ran, so the scan is incomplete; {_OPT_OUT}"
     return None
 
 

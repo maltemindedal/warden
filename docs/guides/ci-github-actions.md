@@ -17,12 +17,12 @@ Warden exits `1` when any Critical or High finding is present. Medium and below
 are reported but do not fail the job. See
 [Exit codes](../reference/cli.md#exit-codes).
 
-**By default a scanner that fails to run does not fail the build.** Warden prints
-a warning and continues. Treat a green build as "no High or Critical findings *in
-the reports that were produced*", and check the log or `tools_run` in the report
-if you need certainty that every scanner ran. To get that certainty from the gate
-itself, pass `--strict` (the action's `strict` input): the run then exits `3` when
-a scanner that ran left no usable report, or nothing ran.
+**By default a scanner that fails to run fails the build.** Warden prints a
+warning, runs the rest, and exits `3` when a scanner that ran left no usable
+report, or nothing ran. Passing `--no-strict` (the action's `strict: false`) turns
+that into a warning only. A green build then means "no High or Critical findings
+*in the reports that were produced*", so check the log or `tools_run` in the
+report if you need certainty that every scanner ran.
 
 ## The workflow in this repository
 
@@ -80,7 +80,7 @@ turned on by the `url` input, or by a `target_url` in a file given through the
 | --- | --- | --- |
 | `url` | none | DAST target. Omit to skip ZAP. |
 | `config` | none | Path to a `.warden.yaml` **outside the checkout**, used instead of the repository's own. See [Gating pull requests](#gating-pull-requests). |
-| `strict` | `"false"` | Pass `--strict`: exit `3` when a scanner that ran left no usable report. Must be `true` or `false` (any case); anything else fails the step, so a misspelling cannot switch the check off. |
+| `strict` | `"true"` | Exit `3` when a scanner that ran left no usable report. `false` passes `--no-strict`. Must be `true`, `false` (any case) or empty, which counts as `true`; anything else fails the step, so a misspelling cannot switch the check off. |
 | `upload-artifact` | `"true"` | Whether to upload the reports as a build artifact. |
 | `artifact-name` | `"warden-report"` | Name of the uploaded artifact. |
 
@@ -114,7 +114,6 @@ path inside the checkout, symlinks resolved, and one that is not a file):
 - uses: maltemindedal/warden@<commit sha>
   with:
     config: ${{ runner.temp }}/warden.yaml
-    strict: true
 ```
 
 It only helps if the workflow that names it is not itself taken from the change: a
@@ -126,8 +125,8 @@ trusted file is honored, so it can also start a DAST scan.
 
 It does not cover the scanners' own files or inline suppressions: Warden runs Trivy,
 Semgrep and Gitleaks over the checkout as they find it, so a reviewer of a pull request
-has to read changes to those files as changes to the gate. Pair it with `strict`, so a
-scanner that the change broke fails the run instead of passing it.
+has to read changes to those files as changes to the gate. Leave `strict` at its
+default, so a scanner that the change broke fails the run instead of passing it.
 
 ### What the action does
 

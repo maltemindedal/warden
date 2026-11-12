@@ -3,7 +3,7 @@
 ## Sub-features
 
 - `warden --project-root <dir>` runs the scanners, writes `<dir>/security_audit.json` and `<dir>/.security_reports/`, exits 1 on any Critical/High finding.
-- `--help`. Not driven yet: `--strict` (exit 3), `--url` (ZAP), `--config`, `warden-config`, `warden-aggregate`.
+- `--help`, and `--no-strict` on the clean run when Trivy or Gitleaks is absent (strict, the default, would exit 3). Not driven yet: exit 3 itself, `--url` (ZAP), `--config`, `warden-config`, `warden-aggregate`.
 
 ## How to get to it (user POV)
 

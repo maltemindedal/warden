@@ -45,7 +45,7 @@ Without installing, you can always run from a checkout:
 uv run warden --help
 ```
 
-## A tool was skipped or warned, but the scan still passed
+## A tool was skipped or warned, and the scan exits 3
 
 Output like this means a scanner did not run cleanly:
 
@@ -54,9 +54,15 @@ Output like this means a scanner did not run cleanly:
    -> Warning: trivy was not found on PATH.
 ```
 
-**This does not fail the build.** Warden reports the warning and continues,
-then bases its verdict on whatever reports exist. A scan can print `PASS` while a
-scanner never ran.
+Warden reports the warning, runs the other scanners, and bases its verdict on
+whatever reports exist. If no finding failed the build, it then names the scanners
+that left no usable report and exits `3`:
+
+```
+STRICT: Trivy, Gitleaks did not produce a usable report, so the scan is incomplete; to accept an incomplete scan, pass --no-strict.
+
+AUDIT INCOMPLETE!
+```
 
 Four causes:
 
@@ -74,10 +80,11 @@ Four causes:
   older than 0.37 fails this way with `unknown flag: --scanners`, which Warden
   passes: use 0.37 or newer (the installer and the image bring one).
 
-To make this a failure instead of a warning, run `warden --strict`: it exits `3`
-when a scanner that ran left no usable report (see the
-[CLI reference](../reference/cli.md#behaviour)). To confirm which tools actually
-contributed, check `tools_run`:
+Fix the cause, or pass `--no-strict` to let the scan pass with only the warning,
+for example on a laptop without Trivy or Gitleaks (see the
+[CLI reference](../reference/cli.md#behaviour)). With `--no-strict` a scan can print
+`PASS` while a scanner never ran. To confirm which tools actually contributed,
+check `tools_run`:
 
 ```bash
 python -c "import json;print(json.load(open('security_audit.json'))['summary']['tools_run'])"

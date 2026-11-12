@@ -139,6 +139,9 @@ Two things to understand about this output:
   counted and reported, but they do not change the verdict.
 - **The verdict sets the exit code.** `FAIL` exits `1`, `PASS` exits `0`. That is
   what makes Warden usable as a CI gate.
+- **A scanner that did not run fails the scan too.** If one left no usable report
+  and nothing failed the build, Warden prints a `STRICT:` line naming it and exits
+  `3`. Pass `--no-strict` to accept the incomplete scan.
 
 Full details are in `security_audit.json` next to your project, and each tool's
 raw output is in `.security_reports/`. If your project has a `.gitignore`, Warden adds

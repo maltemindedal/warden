@@ -55,7 +55,7 @@ def test_cli_rewrites_localhost_target_for_zap(tmp_path: Path) -> None:
     runner = RecordingRunner(report_text="{}")
 
     exit_code = cli.main(
-        ["--project-root", str(tmp_path), "--url", "http://localhost:3000"],
+        ["--project-root", str(tmp_path), "--no-strict", "--url", "http://localhost:3000"],
         runner=runner,
     )
 
@@ -78,7 +78,7 @@ def test_cli_skips_disabled_tools(tmp_path: Path) -> None:
     (tmp_path / ".warden.yaml").write_text(DISABLE_EVERY_TOOL, encoding="utf-8")
     runner = RecordingRunner()
 
-    exit_code = cli.main(["--project-root", str(tmp_path)], runner=runner)
+    exit_code = cli.main(["--project-root", str(tmp_path), "--no-strict"], runner=runner)
 
     assert exit_code == 0
     assert runner.commands == []
@@ -95,7 +95,7 @@ def test_cli_discards_reports_from_a_previous_run(tmp_path: Path) -> None:
     (report_dir / "zap.html").write_text("stale", encoding="utf-8")
     runner = RecordingRunner()
 
-    exit_code = cli.main(["--project-root", str(tmp_path)], runner=runner)
+    exit_code = cli.main(["--project-root", str(tmp_path), "--no-strict"], runner=runner)
 
     assert exit_code == 0
     assert runner.commands == []
@@ -110,7 +110,7 @@ def test_cli_warns_and_continues_when_a_scanner_is_missing(
 ) -> None:
     runner = RecordingRunner(returncode=None, warning="trivy was not found on PATH.")
 
-    exit_code = cli.main(["--project-root", str(tmp_path)], runner=runner)
+    exit_code = cli.main(["--project-root", str(tmp_path), "--no-strict"], runner=runner)
 
     output = capsys.readouterr().out
     assert exit_code == 0
@@ -124,7 +124,7 @@ def test_cli_warns_and_continues_when_a_scanner_fails(
 ) -> None:
     runner = RecordingRunner(returncode=2)
 
-    exit_code = cli.main(["--project-root", str(tmp_path)], runner=runner)
+    exit_code = cli.main(["--project-root", str(tmp_path), "--no-strict"], runner=runner)
 
     output = capsys.readouterr().out
     assert exit_code == 0
@@ -139,7 +139,7 @@ def test_a_symlink_where_the_report_goes_is_replaced_not_followed(tmp_path: Path
     (project / ".warden.yaml").write_text(DISABLE_EVERY_TOOL, encoding="utf-8")
     symlink_or_skip(project / "security_audit.json", victim)
 
-    exit_code = cli.main(["--project-root", str(project)], runner=RecordingRunner())
+    exit_code = cli.main(["--project-root", str(project), "--no-strict"], runner=RecordingRunner())
 
     report = project / "security_audit.json"
     assert exit_code == 0
@@ -231,7 +231,9 @@ def test_an_unusable_dast_url_is_a_warning_and_zap_is_skipped(
 ) -> None:
     runner = RecordingRunner(report_text="{}")
 
-    exit_code = cli.main(["--project-root", str(tmp_path), "--url", url], runner=runner)
+    exit_code = cli.main(
+        ["--project-root", str(tmp_path), "--no-strict", "--url", url], runner=runner
+    )
 
     output = capsys.readouterr().out
     assert exit_code == 0
@@ -304,7 +306,7 @@ def test_the_cli_prints_what_the_config_warned_about(
     monkeypatch.setenv("GITHUB_WORKSPACE", str(tmp_path))
     runner = RecordingRunner(report_text="{}")
 
-    exit_code = cli.main(["--project-root", str(tmp_path)], runner=runner)
+    exit_code = cli.main(["--project-root", str(tmp_path), "--no-strict"], runner=runner)
 
     output = capsys.readouterr().out
     assert exit_code == 0
@@ -342,7 +344,9 @@ def test_a_scanner_that_timed_out_is_reported_as_a_warning_not_as_done(
         returncode=None, timed_out=True, warning="trivy timed out after 5 seconds and was stopped."
     )
 
-    exit_code = cli.main(["--project-root", str(tmp_path), "--timeout", "5"], runner=runner)
+    exit_code = cli.main(
+        ["--project-root", str(tmp_path), "--no-strict", "--timeout", "5"], runner=runner
+    )
 
     output = capsys.readouterr().out
     assert exit_code == 0
@@ -354,7 +358,8 @@ USABLE_REPORTS = {"trivy.json": "{}", "semgrep.json": '{"results": []}', "gitlea
 
 
 def _strict(tmp_path: Path, runner: RecordingRunner, *extra: str) -> int:
-    return cli.main(["--project-root", str(tmp_path), "--strict", *extra], runner=runner)
+    """Strict is the default, so these tests pass no flag and fail if the default flips back."""
+    return cli.main(["--project-root", str(tmp_path), *extra], runner=runner)
 
 
 def test_strict_passes_when_every_scanner_that_ran_left_a_usable_report(
@@ -369,18 +374,41 @@ def test_strict_passes_when_every_scanner_that_ran_left_a_usable_report(
     assert "AUDIT COMPLETE!" in output
 
 
-def test_strict_is_exit_3_when_a_scanner_is_missing_where_the_default_passes(
+def test_a_missing_scanner_is_exit_3_by_default_and_with_strict_but_passes_with_no_strict(
     tmp_path: Path, capsys: CaptureFixture[str]
 ) -> None:
+    """Strict used to be opt-in, so a run with no scanner on PATH printed PASS and exited 0: the
+    gate failed open. It is the default now, `--strict` is still accepted, and `--no-strict` is
+    the way back, which the failure line names for a local user without Trivy or Gitleaks."""
     runner = RecordingRunner(returncode=None, warning="trivy was not found on PATH.")
 
     default_exit = cli.main(["--project-root", str(tmp_path)], runner=runner)
-    strict_exit = _strict(tmp_path, runner)
+    default_output = capsys.readouterr().out
+    strict_exit = _strict(tmp_path, runner, "--strict")
+    capsys.readouterr()
+    opt_out_exit = _strict(tmp_path, runner, "--no-strict")
+    opt_out_output = capsys.readouterr().out
 
-    output = capsys.readouterr().out
-    assert (default_exit, strict_exit) == (0, cli.EXIT_INCOMPLETE)
-    assert "STRICT: Trivy, Semgrep, Gitleaks did not produce a usable report" in output
-    assert "AUDIT INCOMPLETE!" in output
+    assert (default_exit, strict_exit, opt_out_exit) == (
+        cli.EXIT_INCOMPLETE,
+        cli.EXIT_INCOMPLETE,
+        0,
+    )
+    assert (
+        "STRICT: Trivy, Semgrep, Gitleaks did not produce a usable report, so the scan is "
+        "incomplete; to accept an incomplete scan, pass --no-strict."
+    ) in default_output
+    assert "AUDIT INCOMPLETE!" in default_output
+    assert "STRICT" not in opt_out_output
+    assert "AUDIT COMPLETE!" in opt_out_output
+
+
+def test_the_last_of_strict_and_no_strict_wins(tmp_path: Path) -> None:
+    """A pipeline that appends `--strict` after an inherited `--no-strict` gets strict back."""
+    runner = RecordingRunner(returncode=None, warning="trivy was not found on PATH.")
+
+    assert _strict(tmp_path, runner, "--no-strict", "--strict") == cli.EXIT_INCOMPLETE
+    assert _strict(tmp_path, runner, "--strict", "--no-strict") == 0
 
 
 def test_strict_is_exit_3_when_scanners_exited_without_writing_a_report(
@@ -577,7 +605,7 @@ def test_text_the_console_cannot_encode_is_printed_escaped_not_a_traceback(
     stream = io.TextIOWrapper(raw, encoding=encoding, write_through=True)
     monkeypatch.setattr(sys, "stdout", stream)
 
-    exit_code = cli.main(["--project-root", str(tmp_path)], runner=RecordingRunner())
+    exit_code = cli.main(["--project-root", str(tmp_path), "--no-strict"], runner=RecordingRunner())
 
     output = raw.getvalue().decode(encoding)
     assert exit_code == 0
