@@ -13,16 +13,16 @@ Warden runs Trivy, Semgrep, Gitleaks and optional OWASP ZAP over a project, merg
   ```
 
 - One test: `uv run pytest tests/test_scanners.py::test_registry_holds_the_documented_scanners_in_report_order`, or by keyword: `uv run pytest -k gitleaks`
-- Linux replay of the gate (Docker, about 25 s, expect exactly 1 skip). Off Linux, `tests/test_action.py` and the `sha256sum` tests in `tests/test_install.py` skip while CI runs them, so run this after touching `action.yml` or `install.sh`:
+- Linux replay of the gate (Docker, about 25 s, expect exactly 4 skips: the Windows backslash test and the flag checks for Trivy, Gitleaks and Docker, which the image lacks). Off Linux, `tests/test_action.py` and the `sha256sum` tests in `tests/test_install.py` skip while CI runs them, so run this after touching `action.yml` or `install.sh`:
 
   ```bash
   docker run --rm -v "$PWD:/src:ro" -e UV_LOCKED=1 ghcr.io/astral-sh/uv:python3.11-trixie-slim bash -c 'mkdir /w && tar -C /src --exclude=./.venv -cf - . | tar -C /w -xf - && cd /w && uv sync --locked -q && uv run ruff format --check . && uv run ruff check . && uv run ty check && uv run pytest -q'
   ```
 
-- CI's `scan` job, the self-scan (Docker and network: the build downloads Trivy and Gitleaks, Semgrep fetches its rules). It must exit 0; its reports land in the git-ignored `security_audit.json` and `.security_reports/`:
+- CI's `scan` job, the self-scan with `--strict` (Docker and network: the build downloads Trivy and Gitleaks, Semgrep fetches its rules). It must exit 0, so a scanner that leaves no usable report fails it; its reports land in the git-ignored `security_audit.json` and `.security_reports/`:
 
   ```bash
-  docker build -t warden:local . && docker run --rm --user "$(id -u):$(id -g)" -v "$PWD:/src" warden:local
+  docker build -t warden:local . && docker run --rm --user "$(id -u):$(id -g)" -v "$PWD:/src" warden:local --strict
   ```
 
 ## Cursor Cloud specific instructions
@@ -61,7 +61,7 @@ Docs mirror the code exactly; change them in the same commit:
 ## Gotchas
 
 - Never pass `--url` to `warden`, or the workflow's `url` input: ZAP runs an active attack scan against that host. Exercise DAST code through `RecordingRunner` tests instead.
-- Green unit tests do not prove a scanner flag exists, because `RecordingRunner` only records the argv Warden built. A nonexistent Gitleaks `--exclude-path` passed the tests while silently disabling secret scanning (`f5388bc`). After changing a command builder, check each flag against the pinned tool in the image, for example `docker run --rm --entrypoint gitleaks warden:local detect --help` (likewise `trivy fs --help`, `semgrep scan --help`).
+- Green unit tests do not prove a scanner flag exists, because `RecordingRunner` only records the argv Warden built. A nonexistent Gitleaks `--exclude-path` passed the tests while silently disabling secret scanning (`f5388bc`). `tests/test_scanner_flags.py` checks every flag against the installed tool's `<subcommand> --help` and skips a tool that is not on PATH, so it only covers Semgrep and Docker on a plain host. CI's `scan` job runs it against the Trivy and Gitleaks binaries in the image and fails on a skip. After changing a command builder, run it with the pinned tools on PATH.
 - `uv sync` installs the real Semgrep, but Trivy and Gitleaks are usually absent on the host, so `uv run warden <dir>` prints PASS and exits 0 with only warnings. Add `--strict` (exit 3) or run the image to see a real result.
 - Some tests read files as text, so their shape is load-bearing: `test_action.py` slices the `Run Warden` step of `action.yml` from `run: |` to the next `    - name:`, and `test_install.py` extracts `install.sh` functions up to a closing `}` line and regex-matches the version and SHA-256 lines.
 - Pins move together, and tests enforce it. uv: the `Dockerfile` `FROM` line, `UV_VERSION` in `install.sh`, `$UvVersion` in `install.ps1`. Trivy and Gitleaks: version plus amd64 and arm64 SHA-256 in the `Dockerfile` and `install.sh`, with digests from each release's checksums file. Dependabot's uv PR changes only the `Dockerfile`, so run `python3 tools/sync_pins.py` in that same PR (it rewrites both installers from the `Dockerfile`; `--check` only reports).
