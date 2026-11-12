@@ -2,13 +2,13 @@ from __future__ import annotations
 
 import os
 import signal
-import stat
 import subprocess
 from collections.abc import Iterator, Sequence
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Protocol, cast
+from typing import Protocol, assert_never, cast
 
+from . import _fs as fs
 from . import _out as out
 from ._json import JsonLimitError, as_mapping, get_string, load_json, write_json
 from ._models import CommandResult
@@ -49,46 +49,32 @@ class ToolRunResult:
 def _clear_stale_reports(report_dir: Path) -> None:
     for scanner in SCANNERS:
         for filename in (scanner.report_file, *scanner.extra_artifacts):
-            (report_dir / filename).unlink(missing_ok=True)
+            fs.owned_file(report_dir / filename).remove()
 
 
 def _ignore_report_dir(root: Path) -> None:
-    gitignore_path = root / ".gitignore"
-    # A symlinked or special `.gitignore` is left alone: appending would write through the link.
-    if gitignore_path.is_symlink() or not gitignore_path.is_file():
-        return
-
-    # Best effort: this only keeps the reports out of version control, so an unreadable or
-    # unwritable `.gitignore` must not stop the audit. git reads the file as bytes, so a legacy
-    # encoding is fine to append to; a file with NULs (UTF-16) is not text git can use at all.
-    try:
-        raw = gitignore_path.read_bytes()
-        if b"\x00" in raw:
-            out.say("Warning: could not add .security_reports/ to .gitignore: not a text file")
-            return
-        existing_lines = raw.decode("utf-8", errors="replace").splitlines()
-        if any(line.strip() == ".security_reports/" for line in existing_lines):
-            return
-
-        with gitignore_path.open("a", encoding="utf-8") as handle:
-            if existing_lines and existing_lines[-1].strip():
-                handle.write("\n")
-            handle.write(".security_reports/\n")
-    except OSError as error:
-        out.say(
-            f"Warning: could not add .security_reports/ to .gitignore: {error.strerror or error}"
-        )
+    """Best effort: this only keeps the reports out of version control, so a `.gitignore` that
+    cannot be read or written must not stop the audit."""
+    problem = "Warning: could not add .security_reports/ to .gitignore"
+    match fs.append_line(root / ".gitignore", ".security_reports/"):
+        case fs.Appended() | fs.AlreadyThere() | fs.Absent() | fs.NotRegular():
+            # No `.gitignore` is created, and a symlinked or special one is left alone:
+            # appending would write through the link.
+            pass
+        case fs.Unlocatable(reason) | fs.Unreadable(reason) | fs.Unwritable(reason):
+            out.say(f"{problem}: {reason}")
+        case _ as unreachable:
+            assert_never(unreachable)
 
 
 def prepare_report_dir(project_root: str | Path) -> Path:
-    """Create `.security_reports/`, gitignore it, and drop any previous run's reports."""
-    root = Path(project_root).resolve()
-    report_dir = root / ".security_reports"
-    # A project can ship this name as a symlink, and the reports below are deleted and written
-    # through it. Replace the link with a real directory rather than follow it.
-    if report_dir.is_symlink():
-        report_dir.unlink()
-    report_dir.mkdir(parents=True, exist_ok=True)
+    """Create `.security_reports/`, gitignore it, and drop any previous run's reports.
+
+    A project can ship that name as a symlink, and the reports are deleted and written through
+    it, so `fs.owned_dir` replaces the link with a real directory rather than follow it.
+    """
+    root = fs.resolved(project_root)
+    report_dir = fs.owned_dir(root / ".security_reports")
     _clear_stale_reports(report_dir)
     _ignore_report_dir(root)
     return report_dir
@@ -101,12 +87,7 @@ def clear_output_file(path: Path) -> None:
     elsewhere, or as a named pipe, and opening one for writing blocks forever. Warden owns the
     name, so either is replaced by the regular file it writes. Anything else is left alone.
     """
-    try:
-        mode = path.lstat().st_mode
-    except OSError:
-        return
-    if stat.S_ISLNK(mode) or stat.S_ISFIFO(mode):
-        path.unlink()
+    fs.owned_file(path).make_way()
 
 
 _STOP_GRACE_SECONDS = 10
@@ -289,7 +270,7 @@ def _tidy_report(
     raw_data = loaded.data
     if path_key is not None:
         raw_data = _without_excluded(raw_data, path_key, exclude_dirs)
-    write_json(path, raw_data)
+    write_json(fs.as_given(path), raw_data)
     return None
 
 
@@ -302,9 +283,9 @@ def scan_request(
     url: str = "",
 ) -> ScanRequest:
     """Everything `scanner.build_command` needs, with the paths already resolved."""
-    resolved_report_dir = Path(report_dir).resolve()
+    resolved_report_dir = fs.resolved(report_dir)
     return ScanRequest(
-        project_root=Path(project_root).resolve(),
+        project_root=fs.resolved(project_root),
         report_dir=resolved_report_dir,
         report_path=resolved_report_dir / scanner.report_file,
         exclude_dirs=tuple(exclude_dirs),
@@ -321,6 +302,7 @@ def run_scanner(
 ) -> ToolRunResult:
     """Build this scanner's command line, run it, and tidy the report it left."""
     command = scanner.build_command(request)
+    report = fs.as_given(request.report_path)
     result = runner(
         command.args,
         cwd=command.cwd,
@@ -330,7 +312,7 @@ def run_scanner(
     )
     if result.timed_out:
         # Whatever a stopped scanner left behind is not a finished report.
-        request.report_path.unlink(missing_ok=True)
+        report.remove()
         if command.on_timeout is not None:
             # Best effort: the container may be gone already, and only the attempt matters.
             runner(command.on_timeout, cwd=command.cwd, stderr_to_devnull=True, timeout=30)
@@ -340,7 +322,7 @@ def run_scanner(
     return ToolRunResult(
         scanner=scanner,
         returncode=result.returncode,
-        report_written=request.report_path.exists(),
+        report_written=report.present(),
         warning=result.warning,
         report_warning=report_warning,
     )

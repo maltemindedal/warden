@@ -716,22 +716,23 @@ def test_a_gitignore_that_is_not_text_is_left_alone_with_a_warning(
 
 
 def test_a_gitignore_that_cannot_be_written_warns_instead_of_aborting_the_run(
-    tmp_path: Path, monkeypatch: MonkeyPatch, capsys: pytest.CaptureFixture[str]
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
 ) -> None:
-    (tmp_path / ".gitignore").write_text("*.log\n", encoding="utf-8")
-    real_open = Path.open
-
-    def refuse_to_append(self: Path, mode: str = "r", *args: Any, **kwargs: Any) -> Any:
-        if self.name == ".gitignore" and "a" in mode:
-            raise PermissionError(13, "Permission denied")
-        return real_open(self, mode, *args, **kwargs)
-
-    monkeypatch.setattr(Path, "open", refuse_to_append)
-
-    report_dir = tooling.prepare_report_dir(tmp_path)
+    """A read-only `.gitignore` used to abort the run with PermissionError (b89314d). The write
+    is refused by a file size limit, which holds for root too, where a file mode does not."""
+    resource = pytest.importorskip("resource")
+    gitignore = tmp_path / ".gitignore"
+    gitignore.write_text("*.log\n", encoding="utf-8")
+    soft, hard = resource.getrlimit(resource.RLIMIT_FSIZE)
+    resource.setrlimit(resource.RLIMIT_FSIZE, (gitignore.stat().st_size, hard))
+    try:
+        report_dir = tooling.prepare_report_dir(tmp_path)
+    finally:
+        resource.setrlimit(resource.RLIMIT_FSIZE, (soft, hard))
 
     assert report_dir.is_dir()
-    assert "could not add .security_reports/ to .gitignore: Permission denied" in (
+    assert gitignore.read_text(encoding="utf-8") == "*.log\n"
+    assert "could not add .security_reports/ to .gitignore: File too large" in (
         capsys.readouterr().out
     )
 

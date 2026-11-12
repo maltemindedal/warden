@@ -4,6 +4,7 @@ from dataclasses import replace
 from pathlib import Path
 from typing import cast
 
+from . import _fs as fs
 from . import _out as out
 from . import aggregate, config, tooling
 from ._json import JsonLimitError
@@ -63,14 +64,14 @@ def _parse_args(argv: list[str] | None = None) -> CliOptions:
     timeout = cast(float | None, namespace.timeout)
     if timeout is not None and not 0 < timeout <= _MAX_TIMEOUT_SECONDS:  # also rejects nan, inf
         parser.error(f"--timeout must be a number of seconds from 0 up to {_MAX_TIMEOUT_SECONDS}")
-    project_root = Path(cast(str, namespace.project_root)).resolve()
-    if not project_root.is_dir():
+    project_root = fs.resolved(cast(str, namespace.project_root))
+    if not fs.is_dir(project_root):
         parser.error(f"--project-root {project_root} is not an existing directory")
     config_path_value = cast(str | None, namespace.config)
     return CliOptions(
         project_root=project_root,
         cli_url=cast(str, namespace.url),
-        config_path=Path(config_path_value).resolve() if config_path_value is not None else None,
+        config_path=fs.resolved(config_path_value) if config_path_value is not None else None,
         timeout=timeout,
         strict=cast(bool, namespace.strict),
     )
@@ -91,14 +92,6 @@ def _incomplete(
     if not attempted:
         return f"no scanner ran, so the scan is incomplete; {_OPT_OUT}"
     return None
-
-
-def _describe(error: OSError) -> str:
-    return (
-        f"{error.filename}: {error.strerror}"
-        if error.filename and error.strerror is not None and error.strerror != ""
-        else str(error)
-    )
 
 
 def _print_result(result: tooling.ToolRunResult) -> None:
@@ -191,12 +184,13 @@ def run_audit(options: CliOptions, *, runner: tooling.CommandRunner) -> int:
         cli_url=options.cli_url,
         config_path=options.config_path,
     )
-    output_file = options.project_root / "security_audit.json"
+    output = fs.owned_file(options.project_root / "security_audit.json")
+    output_file = output.path
     try:
         report_dir = tooling.prepare_report_dir(options.project_root)
         tooling.clear_output_file(output_file)
-    except OSError as error:
-        return out.error("warden", f"cannot prepare the report paths: {_describe(error)}")
+    except fs.ProjectIOError as error:
+        return out.error("warden", f"cannot prepare the report paths: {error}")
 
     out.say("STARTING SECURITY AUDIT")
     out.say(f"   Target: {options.project_root}")
@@ -223,13 +217,9 @@ def run_audit(options: CliOptions, *, runner: tooling.CommandRunner) -> int:
     out.say()
     out.say("[*] Generating Final Report...")
     try:
-        verdict, tools_run = aggregate.generate_report(
-            report_dir=report_dir, output_file=output_file
-        )
-    except OSError as error:
-        return out.error(
-            "warden", f"cannot read the reports or write {output_file.name}: {_describe(error)}"
-        )
+        verdict, tools_run = aggregate.generate_report(report_dir=report_dir, output_file=output)
+    except fs.ProjectIOError as error:
+        return out.error("warden", f"cannot read the reports or write {output_file.name}: {error}")
     except JsonLimitError as error:
         return out.error("warden", f"{error}, {aggregate.FAILS_CLOSED}")
     incomplete = _incomplete(attempted, tools_run, skipped_for_url) if options.strict else None

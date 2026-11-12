@@ -67,7 +67,7 @@ src = ["src", "tests", "tools"]
 
 [tool.ruff.lint]
 # S: security (bandit), BLE: blind `except`, PGH: blanket `noqa` / `type: ignore`,
-# TID251: the names only `src/warden/_out.py` may use (banned-api below).
+# TID251: the names only `src/warden/_out.py` or `src/warden/_fs.py` may use (banned-api below).
 select = ["B", "BLE", "E", "F", "I", "PGH", "S", "TID251", "UP", "W"]
 
 [tool.ruff.lint.flake8-tidy-imports.banned-api]
@@ -79,13 +79,43 @@ select = ["B", "BLE", "E", "F", "I", "PGH", "S", "TID251", "UP", "W"]
 "sys.__stderr__".msg = "Use warden._out.error() or say_err(): they escape project text."
 "rich".msg = "Use warden._out.say_styled() or table(): they take text and a style name, never markup, and rich passes ESC and bidi characters through."
 "argparse.ArgumentParser".msg = "Use warden._out.ArgumentParser: argparse echoes argv to stderr unescaped."
+# Only `_fs.py` touches the file system: a read there returns an outcome instead of raising,
+# and everything else raises one type. ruff does not match the builtin `open` or a method on a
+# `Path`, so `tests/test_boundaries.py` covers those, and runs every row here through ruff.
+"io.open".msg = "Use warden._fs.read_text() or read_bytes(): they return an outcome instead of raising, so a project file cannot end the run in a traceback."
+"os.open".msg = "Use warden._fs.read_text() or read_bytes(): they return an outcome instead of raising, so a project file cannot end the run in a traceback."
+"os.fdopen".msg = "Use warden._fs.read_text() or read_bytes(): they return an outcome instead of raising, so a project file cannot end the run in a traceback."
+"os.listdir".msg = "Use warden._fs.read_text() or read_bytes(): they return an outcome instead of raising, so a project file cannot end the run in a traceback."
+"os.scandir".msg = "Use warden._fs.read_text() or read_bytes(): they return an outcome instead of raising, so a project file cannot end the run in a traceback."
+"os.walk".msg = "Use warden._fs.read_text() or read_bytes(): they return an outcome instead of raising, so a project file cannot end the run in a traceback."
+"glob".msg = "Use warden._fs.read_text() or read_bytes(): they return an outcome instead of raising, so a project file cannot end the run in a traceback."
+"os.unlink".msg = "Use a warden._fs.WritableFile from owned_file() or as_given(): it raises only ProjectIOError and says what a symlink at the name means."
+"os.remove".msg = "Use a warden._fs.WritableFile from owned_file() or as_given(): it raises only ProjectIOError and says what a symlink at the name means."
+"os.rename".msg = "Use a warden._fs.WritableFile from owned_file() or as_given(): it raises only ProjectIOError and says what a symlink at the name means."
+"os.replace".msg = "Use a warden._fs.WritableFile from owned_file() or as_given(): it raises only ProjectIOError and says what a symlink at the name means."
+"os.rmdir".msg = "Use a warden._fs.WritableFile from owned_file() or as_given(): it raises only ProjectIOError and says what a symlink at the name means."
+"os.removedirs".msg = "Use a warden._fs.WritableFile from owned_file() or as_given(): it raises only ProjectIOError and says what a symlink at the name means."
+"os.truncate".msg = "Use a warden._fs.WritableFile from owned_file() or as_given(): it raises only ProjectIOError and says what a symlink at the name means."
+"os.chmod".msg = "Use a warden._fs.WritableFile from owned_file() or as_given(): it raises only ProjectIOError and says what a symlink at the name means."
+"os.symlink".msg = "Use a warden._fs.WritableFile from owned_file() or as_given(): it raises only ProjectIOError and says what a symlink at the name means."
+"os.link".msg = "Use a warden._fs.WritableFile from owned_file() or as_given(): it raises only ProjectIOError and says what a symlink at the name means."
+"os.mkdir".msg = "Use warden._fs.resolved(), is_dir(), owned_dir() or WritableFile.present(): they raise only ProjectIOError."
+"os.makedirs".msg = "Use warden._fs.resolved(), is_dir(), owned_dir() or WritableFile.present(): they raise only ProjectIOError."
+"os.stat".msg = "Use warden._fs.resolved(), is_dir(), owned_dir() or WritableFile.present(): they raise only ProjectIOError."
+"os.lstat".msg = "Use warden._fs.resolved(), is_dir(), owned_dir() or WritableFile.present(): they raise only ProjectIOError."
+"os.access".msg = "Use warden._fs.resolved(), is_dir(), owned_dir() or WritableFile.present(): they raise only ProjectIOError."
+"os.readlink".msg = "Use warden._fs.resolved(), is_dir(), owned_dir() or WritableFile.present(): they raise only ProjectIOError."
+"os.path".msg = "Use warden._fs.resolved(), is_dir(), owned_dir() or WritableFile.present(): they raise only ProjectIOError."
+"shutil".msg = "Use warden._fs: it is the only module that touches the file system."
+"tempfile".msg = "Use warden._fs: it is the only module that touches the file system."
 
 [tool.ruff.lint.per-file-ignores]
 # Tests assert by design and run fixed, list-form commands.
 "tests/**" = ["S101", "S603", "S607"]
-# The output boundary is a rule about the package: `_out.py` owns the banned names, and tests,
-# tools and skill scripts are not Warden's output.
+# The two boundaries are rules about the package: `_out.py` and `_fs.py` own the banned names,
+# and tests, tools and skill scripts are neither Warden's output nor its reads of a project.
 "src/warden/_out.py" = ["TID251"]
+"src/warden/_fs.py" = ["TID251"]
 "!src/warden/**" = ["TID251"]
 
 [tool.ruff.format]
