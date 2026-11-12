@@ -57,6 +57,7 @@ Docs mirror the code exactly; change them in the same commit:
 - `config.py`: `docs/reference/configuration.md`
 - `tests/fixtures/`: the sample output in `README.md`
 - A new doc gets a row in `docs/README.md`. Run every command you document.
+- `tests/test_docs.py` checks the part a test can derive: the severity and `riskcode` tables, report files and categories, each command's usage, the config keys, a version named for a package in `uv.lock`, and no to-do marker left in a doc. Its failure names the file and the text to write. Name a locked version as the locked one or as a closed range (`1.173.0 through 1.184.0`), never an open `from 1.173`. Prose about behaviour is not checked, so run what it describes.
 
 ## Gotchas
 
