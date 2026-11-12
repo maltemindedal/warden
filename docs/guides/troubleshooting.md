@@ -59,6 +59,8 @@ whatever reports exist. If no finding failed the build, it then names the scanne
 that left no usable report and exits `3`:
 
 ```
+INCOMPLETE: No High/Critical issues found in the reports that were read. See security_audit.json
+
 STRICT: Trivy, Gitleaks did not produce a usable report, so the scan is incomplete; to accept an incomplete scan, pass --no-strict.
 
 AUDIT INCOMPLETE!

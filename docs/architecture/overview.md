@@ -166,7 +166,10 @@ severities, counts, and table breakdown. `Verdict.failed` derives its value from
 the failing severities, so the exit code and the `PASS` or `FAIL` line use the
 same decision. `aggregate.generate_report` returns the verdict, and
 `cli.run_audit` converts it to an exit code. `_summary.print_summary` only
-renders the verdict. Tests can therefore check the result without rendering the
+renders the verdict. `cli` calls it once it knows whether strict holds the run to
+be incomplete, and then the line reads `INCOMPLETE` where it would read `PASS`,
+so a run that exits `3` never prints `PASS`. `warden-aggregate` has no strict
+check and prints `PASS` or `FAIL`. Tests can therefore check the result without rendering the
 table.
 
 Gitleaks findings are always assigned `CRITICAL`, so any detected secret fails

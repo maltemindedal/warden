@@ -91,13 +91,15 @@ def generate_report(
     report_dir: str | Path,
     output_file: fs.WritableFile,
 ) -> tuple[Verdict, list[str]]:
-    """Write the report and print its summary; return the verdict and the report's `tools_run`."""
+    """Write the report; return the verdict and the report's `tools_run`.
+
+    The caller prints the summary, because only `warden` knows whether strict holds the run to
+    be incomplete, and it reads that from the `tools_run` returned here.
+    """
     findings, report = build_report(report_dir)
     write_json(output_file, report)
     out.say(f"Generated {output_file.path} with {len(findings)} issues.")
-    verdict = judge(findings)
-    print_summary(verdict=verdict, output_file=output_file.path)
-    return verdict, report["summary"]["tools_run"]
+    return judge(findings), report["summary"]["tools_run"]
 
 
 def _parse_args(argv: list[str] | None = None) -> AggregateCliOptions:
@@ -137,4 +139,5 @@ def main(argv: list[str] | None = None) -> int:
         )
     except JsonLimitError as error:
         return out.error("warden-aggregate", f"{error}, {FAILS_CLOSED}")
+    print_summary(verdict=verdict, output_file=options.output_file)
     return 1 if verdict.failed else 0

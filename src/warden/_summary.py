@@ -67,9 +67,17 @@ def _format_breakdown(items: Mapping[str, int], order: Sequence[str]) -> str:
     return ", ".join(f"{key}: {items[key]}" for key in order if items.get(key, 0) != 0)
 
 
-def _status_summary(failed: bool) -> tuple[str, str, str]:
+def _status_summary(failed: bool, incomplete: bool) -> tuple[str, str, str]:
+    """Findings win. Without them, a run strict holds to be incomplete is not a `PASS`: the
+    scanner that left no report is the one that might have found something."""
     if failed:
         return "red", "FAIL", "High/Critical issues found."
+    if incomplete:
+        return (
+            "yellow",
+            "INCOMPLETE",
+            "No High/Critical issues found in the reports that were read.",
+        )
     return "green", "PASS", "No High/Critical issues found."
 
 
@@ -77,6 +85,7 @@ def print_summary(
     *,
     verdict: Verdict,
     output_file: str | Path,
+    incomplete: bool = False,
 ) -> None:
     out.say_styled("-" * 50)
     out.say_styled(out.Span("SCAN COMPLETE", "bold cyan"))
@@ -95,5 +104,5 @@ def print_summary(
         ],
     )
     out.say_styled("-" * 50)
-    status_style, status_label, summary_line = _status_summary(verdict.failed)
+    status_style, status_label, summary_line = _status_summary(verdict.failed, incomplete)
     out.say_styled(out.Span(f"{status_label}:", status_style), f" {summary_line} See {output_file}")

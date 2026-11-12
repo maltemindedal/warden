@@ -344,6 +344,21 @@ def test_print_summary_shows_a_path_literally_even_if_it_looks_like_rich_markup(
     assert capsys.readouterr().out.splitlines()[-1].endswith(f"See {output_file}")
 
 
+def test_print_summary_says_incomplete_instead_of_pass_but_never_instead_of_fail(
+    capsys: CaptureFixture[str],
+) -> None:
+    """Findings win: an incomplete run with a Critical finding is still `FAIL`."""
+    print_summary(verdict=judge([]), output_file="a.json", incomplete=True)
+    clean = capsys.readouterr().out.splitlines()[-1]
+    print_summary(verdict=judge(_findings("CRITICAL")), output_file="a.json", incomplete=True)
+    failing = capsys.readouterr().out.splitlines()[-1]
+
+    assert clean == (
+        "INCOMPLETE: No High/Critical issues found in the reports that were read. See a.json"
+    )
+    assert failing == "FAIL: High/Critical issues found. See a.json"
+
+
 def test_aggregate_main_exits_non_zero_when_a_critical_finding_is_present(tmp_path: Path) -> None:
     _copy_fixture("gitleaks.json", tmp_path)
     output_file = tmp_path / "security_audit.json"
