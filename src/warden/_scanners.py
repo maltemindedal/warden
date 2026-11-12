@@ -6,7 +6,7 @@ import uuid
 from collections.abc import Callable
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Final
+from typing import Final, LiteralString
 
 from ._models import Finding
 from ._parsers import parse_gitleaks, parse_semgrep, parse_trivy, parse_zap
@@ -200,7 +200,7 @@ def _build_zap_command(request: ScanRequest) -> Command:
 class Scanner:
     """One scanner Warden knows about: what it is called, how to run it, how to read it."""
 
-    label: str
+    label: LiteralString
     report_file: str
     category: str
     summary_order: int
@@ -224,7 +224,7 @@ class Scanner:
             raise ValueError(f"Scanner label must be a single alphanumeric word: {self.label!r}")
 
     @property
-    def key(self) -> str:
+    def key(self) -> LiteralString:
         """The `.warden.yaml` key, derived from the label so the two cannot drift apart."""
         return self.label.lower()
 

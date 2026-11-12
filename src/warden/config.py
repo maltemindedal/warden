@@ -6,7 +6,7 @@ import os
 import sys
 import textwrap
 from pathlib import Path
-from typing import cast
+from typing import LiteralString, cast
 
 from ._models import CliOptions, ResolvedConfig
 from ._scanners import SCANNERS
@@ -167,7 +167,8 @@ class _Notes:
 
     A hostile file can be all mistakes, so once enough notes are kept the others are only
     counted: the text of a note past the limit is never built, let alone kept. Text taken from
-    the file goes in as an argument, and is escaped and cut only for a note that is kept.
+    the file goes in as an argument, and is quoted and cut only for a note that is kept. The
+    message is a `LiteralString`, so ty rejects one built from file text with an f-string.
     """
 
     def __init__(self, prefix: str = "") -> None:
@@ -175,10 +176,11 @@ class _Notes:
         self._kept: list[str] = []
         self._omitted = 0
 
-    def add(self, message: str, *file_text: str) -> None:
-        """Note `message`, whose `%s` places are filled with `file_text`, shown safely."""
+    def add(self, message: LiteralString, *args: str | int) -> None:
+        """Note `message`: a `str` fills its `%s` quoted by `shown`, an `int` fills its `%d`."""
         if len(self._kept) < _MAX_WARNINGS:
-            self._kept.append(self._prefix + message % tuple(shown(text, 60) for text in file_text))
+            filled = tuple(shown(arg, 60) if isinstance(arg, str) else arg for arg in args)
+            self._kept.append(self._prefix + message % filled)
         else:
             self._omitted += 1
 
@@ -202,16 +204,19 @@ def _parse_with_notes(text: str, notes: _Notes) -> RawConfig:
         if indent == 0:
             context = _parse_top_level_line(config, stripped)
             if context is None and _split_key_value(stripped) is None:
-                notes.add(f"line {number} (%s) is not `key: value`: ignored", stripped)
+                notes.add("line %d (%s) is not `key: value`: ignored", number, stripped)
             continue
 
         if context not in {"exclude_dirs", "tools"}:
-            where = f"line {number} (%s) is indented but not under"
-            notes.add(f"{where} `exclude_dirs:` or `tools:`: ignored", stripped)
+            notes.add(
+                "line %d (%s) is indented but not under `exclude_dirs:` or `tools:`: ignored",
+                number,
+                stripped,
+            )
         elif context == "exclude_dirs" and not stripped.startswith("-"):
-            notes.add(f"line {number} (%s) is not a `- entry`: ignored", stripped)
+            notes.add("line %d (%s) is not a `- entry`: ignored", number, stripped)
         elif context == "tools" and _split_key_value(stripped) is None:
-            notes.add(f"line {number} (%s) is not `tool: value`: ignored", stripped)
+            notes.add("line %d (%s) is not `tool: value`: ignored", number, stripped)
         _parse_nested_line(config, context, stripped)
 
     for key in config:
@@ -262,12 +267,13 @@ def _note_shapes(raw: RawConfig, notes: _Notes) -> None:
     if "tools" in raw and not isinstance(tools, dict):
         notes.add("tools is not a mapping of `scanner: true|false`: ignored")
     elif isinstance(tools, dict):
-        known = {scanner.key for scanner in SCANNERS}
+        known = {scanner.key: scanner for scanner in SCANNERS}
         for name, value in tools.items():
-            if name not in known:
+            scanner = known.get(name)
+            if scanner is None:
                 notes.add("unknown tool %s under tools is ignored", name)
             elif isinstance(value, str) and value.strip().lower() not in _TOOL_WORDS:
-                notes.add(f"tools.{name} is %s, which counts as false: disabled", value)
+                notes.add(f"tools.{scanner.key} is %s, which counts as false: disabled", value)
 
 
 def _without_nul(entries: list[str], notes: _Notes) -> list[str]:
