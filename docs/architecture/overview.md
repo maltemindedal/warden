@@ -38,9 +38,10 @@ All under `src/warden/`.
 | `aggregate.py` | Assembles the report from the parsed findings and writes it. Also the `warden-aggregate` entry point. |
 | `_parsers.py` | Turns each tool's JSON into `Finding` records and normalises severities. |
 | `_summary.py` | Creates a `Verdict` with counts, a category breakdown, and the build result, then lays out the terminal summary. |
-| `_json.py` | Type-narrowing helpers for walking untrusted JSON, and the reader and writer of JSON files. A file it cannot parse comes back as an error, not a printed warning; one that is valid JSON but more than Python can parse raises `JsonLimitError`; and text UTF-8 cannot encode (a lone surrogate) is written as its escape rather than raising. |
+| `_json.py` | Type-narrowing helpers for walking untrusted JSON, and the reader and writer of JSON files. A file it cannot parse comes back as an error, not a printed warning; one that is valid JSON but more than Python can parse raises `JsonLimitError`; and one that cannot be looked up raises `ProjectIOError`. |
 | `_scanners.py` | One `Scanner` record per tool Warden knows about, the registry of them, and the code that builds each one's command line. |
 | `_models.py` | Shared dataclasses, typed dicts, and constants. No logic. |
+| `_fs.py` | The only module that touches the file system. A read returns an outcome (the text, absent, not a regular file, unlocatable, unreadable) and never raises. A write, a delete or a lookup raises `ProjectIOError` and nothing else. Text UTF-8 cannot encode (a lone surrogate) is written as its escape rather than raising. |
 | `_out.py` | The only module that writes to stdout or stderr, and the only one that imports `rich` or builds an argument parser. It writes a line, an `error:` line, a styled line, a table or a JSON document, and escapes each one as described below. |
 
 The dependency direction is one-way: `cli` depends on `config`, `tooling`, and
@@ -65,6 +66,24 @@ so the three entry points behave alike. `tests/test_boundaries.py` and the
 `rich` import or an `argparse.ArgumentParser` anywhere else in the package.
 The scanners' own output is not covered: they inherit Warden's stdout and
 write to it directly.
+
+Every module that reads, writes or looks up a path imports `_fs`, which imports
+only the standard library. The project's files are hostile too: a name can be a
+symlink, a named pipe or a directory, a path can be too long to look up, and
+the bytes need not be text. Each of those once ended a run in a traceback, so
+`_fs` gives a caller no call that raises one. A read returns a value from a
+closed set (`Text`, `Absent`, `NotRegular`, `Unlocatable`, `Unreadable`), and
+the caller's `match` says what each means. For `.warden.yaml` and `.gitignore`
+every one is a warning. For a scanner report, `Unlocatable` raises instead: the
+report may be there and hold findings, so the audit fails rather than pass
+without them. A write goes through a `WritableFile`, whose constructor records
+what a symlink at the name means: `owned_file` replaces it, for a name Warden
+owns, and `as_given` writes through it, for a path the user typed and for a
+report a scanner wrote. A failed write, delete or lookup raises
+`ProjectIOError`, whose text is the path and the reason.
+`tests/test_boundaries.py` fails on `open` or a `Path` method that touches the
+disk anywhere else in the package, the `TID251` entries on the `os` functions
+that do, and ty on a `match` that leaves an outcome out.
 
 `aggregate.py` once contained the parsing, rendering, and JSON-reading code.
 Those parts moved to separate modules when they began changing independently.

@@ -3,8 +3,9 @@ from __future__ import annotations
 import os
 import textwrap
 from pathlib import Path
-from typing import LiteralString, cast
+from typing import LiteralString, assert_never, cast
 
+from . import _fs as fs
 from . import _out as out
 from ._models import CliOptions, ResolvedConfig
 from ._out import shown
@@ -298,31 +299,33 @@ def resolve_config(
     cli_url: str,
     config_path: str | Path | None = None,
 ) -> ResolvedConfig:
-    root = Path(project_root).resolve()
-    path = Path(config_path).resolve() if config_path is not None else root / CONFIG_FILENAME
+    root = fs.resolved(project_root)
+    path = fs.resolved(config_path) if config_path is not None else root / CONFIG_FILENAME
 
     raw: RawConfig = {}
     notes = _Notes(prefix=f"{path.name}: ")
     warnings: list[str] = []
-    try:
-        # The project's own `.warden.yaml` is untrusted: a named pipe there blocks forever and
-        # `/dev/zero` never ends, so only a regular file is read. A path passed with `--config` is
-        # the user's own choice and is read as it always was, whatever kind of file it is.
-        if path.exists() if config_path is not None else path.is_file():
-            raw = _parse_with_notes(path.read_text(encoding="utf-8-sig"), notes)
-            _note_shapes(raw, notes)
-        elif config_path is not None:
-            warnings.append(f"--config {shown(str(path))} does not exist: using the defaults.")
-        elif os.path.lexists(path):
+    # The project's own `.warden.yaml` is untrusted: a named pipe there blocks forever and
+    # `/dev/zero` never ends, so only a regular file is read. A path passed with `--config` is the
+    # user's own choice and is read as it always was, whatever kind of file it is.
+    accept = fs.Accept.ANYTHING if config_path is not None else fs.Accept.REGULAR
+    match fs.read_text(path, accept=accept, encoding="utf-8-sig"):
+        case fs.Text(text):
+            try:
+                raw = _parse_with_notes(text, notes)
+                _note_shapes(raw, notes)
+            except ValueError as error:  # the parser is meant to be total: the net under it
+                raw = {}
+                warnings.append(f"{path.name} could not be read ({error}): using the defaults.")
+        case fs.Absent():
+            if config_path is not None:
+                warnings.append(f"--config {shown(str(path))} does not exist: using the defaults.")
+        case fs.NotRegular():
             warnings.append(f"{path.name} is not a regular file: using the defaults.")
-    except (OSError, UnicodeDecodeError, ValueError) as error:
-        raw = {}
-        reason = (
-            error.strerror
-            if isinstance(error, OSError) and error.strerror is not None and error.strerror != ""
-            else error
-        )
-        warnings.append(f"{path.name} could not be read ({reason}): using the defaults.")
+        case fs.Unlocatable(reason) | fs.Unreadable(reason):
+            warnings.append(f"{path.name} could not be read ({reason}): using the defaults.")
+        case _ as unreachable:
+            assert_never(unreachable)
 
     exclude_dirs = _without_nul(_extract_exclude_dirs(raw.get("exclude_dirs")), notes)
     enabled_tools = _extract_enabled_tools(raw.get("tools"))
@@ -366,10 +369,10 @@ def _parse_args(argv: list[str] | None = None) -> CliOptions:
     namespace = parser.parse_args(argv)
 
     return CliOptions(
-        project_root=Path(cast(str, namespace.project_root)).resolve(),
+        project_root=fs.resolved(cast(str, namespace.project_root)),
         cli_url=cast(str, namespace.cli_url),
         config_path=(
-            Path(config_path).resolve()
+            fs.resolved(config_path)
             if (config_path := cast(str | None, namespace.config)) is not None
             else None
         ),

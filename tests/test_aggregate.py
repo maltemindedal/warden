@@ -7,6 +7,7 @@ from pathlib import Path
 import pytest
 from pytest import CaptureFixture
 
+from warden._fs import ProjectIOError
 from warden._json import JsonLimitError, get_int, load_json
 from warden._models import Finding, Severity
 from warden._parsers import normalize_severity, parse_zap
@@ -115,6 +116,16 @@ def test_load_json_raises_on_json_more_than_python_can_parse(tmp_path: Path, tex
 
     with pytest.raises(JsonLimitError, match="semgrep.json is more JSON than Python can parse"):
         load_json(report)
+
+
+def test_load_json_raises_on_a_report_it_cannot_look_up(tmp_path: Path) -> None:
+    """A lookup that fails says nothing about whether the report is there, and it may hold
+    findings: reading it as absent would let the audit pass without them (2825ae7 kept the
+    crash for that reason). It raises the one error the entry points turn into exit 1."""
+    with pytest.raises(ProjectIOError) as raised:
+        load_json(tmp_path / ("a" * 300))
+
+    assert raised.value.reason != ""
 
 
 def test_build_report_reads_all_supported_tools(tmp_path: Path) -> None:

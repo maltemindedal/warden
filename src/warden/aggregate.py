@@ -4,6 +4,7 @@ from collections.abc import Sequence
 from pathlib import Path
 from typing import cast
 
+from . import _fs as fs
 from . import _out as out
 from ._json import JsonLimitError, load_json, write_json
 from ._models import (
@@ -85,23 +86,17 @@ def build_report(report_dir: str | Path) -> tuple[list[Finding], AggregateReport
     return findings, report
 
 
-def write_report(output_file: str | Path, report: AggregateReportDict) -> None:
-    output_path = Path(output_file)
-    output_path.parent.mkdir(parents=True, exist_ok=True)
-    write_json(output_path, report)
-
-
 def generate_report(
     *,
     report_dir: str | Path,
-    output_file: str | Path,
+    output_file: fs.WritableFile,
 ) -> tuple[Verdict, list[str]]:
     """Write the report and print its summary; return the verdict and the report's `tools_run`."""
     findings, report = build_report(report_dir)
-    write_report(output_file, report)
-    out.say(f"Generated {output_file} with {len(findings)} issues.")
+    write_json(output_file, report)
+    out.say(f"Generated {output_file.path} with {len(findings)} issues.")
     verdict = judge(findings)
-    print_summary(verdict=verdict, output_file=output_file)
+    print_summary(verdict=verdict, output_file=output_file.path)
     return verdict, report["summary"]["tools_run"]
 
 
@@ -119,13 +114,13 @@ def _parse_args(argv: list[str] | None = None) -> AggregateCliOptions:
     )
     parser.add_argument("output_file", help="Path to write the aggregated JSON report")
     namespace = parser.parse_args(argv)
-    report_dir = Path(cast(str, namespace.report_dir)).resolve()
-    if not report_dir.is_dir():
+    report_dir = fs.resolved(cast(str, namespace.report_dir))
+    if not fs.is_dir(report_dir):
         # A missing directory is not "no reports": a typo would otherwise print PASS.
         parser.error(f"report_dir {report_dir} is not an existing directory")
     return AggregateCliOptions(
         report_dir=report_dir,
-        output_file=Path(cast(str, namespace.output_file)).resolve(),
+        output_file=fs.resolved(cast(str, namespace.output_file)),
     )
 
 
@@ -133,7 +128,9 @@ def main(argv: list[str] | None = None) -> int:
     options = _parse_args(argv)
     out.say(f"--- Aggregating Reports from {options.report_dir} ---")
     try:
-        verdict, _ = generate_report(report_dir=options.report_dir, output_file=options.output_file)
+        verdict, _ = generate_report(
+            report_dir=options.report_dir, output_file=fs.as_given(options.output_file)
+        )
     except JsonLimitError as error:
         return out.error("warden-aggregate", f"{error}, {FAILS_CLOSED}")
     return 1 if verdict.failed else 0
