@@ -33,7 +33,7 @@ CI's quality job sets `UV_LOCKED=1`. A cloud agent shell does not set that varia
 
 Commits and PRs:
 
-- Subjects follow Conventional Commits, `type(scope): lower-case imperative summary` (`fix`, `feat`, `docs`, `refactor`, `perf`, `build`, `ci`, `chore(deps)`). PRs are squash-merged, so the PR title becomes the subject on `main`.
+- Subjects follow Conventional Commits, `type(scope): lower-case imperative summary` (`fix`, `feat`, `docs`, `refactor`, `perf`, `build`, `ci`, `chore(deps)`). That holds for every commit that lands on `main`, and for the PR title.
 - The body, wrapped near 72 columns, says why, which upstream behaviour the change relies on, and which alternatives were rejected. The repo has no changelog, so spell out every behaviour change there. A fix's body opens with `BUG FIX.` or `SECURITY FIX (<severity>).` and shows the broken behaviour; `git show f5388bc` is the model, with a before/after run of the real tool.
 - State only what you ran or read, with numbers (test counts, findings before and after). PR #9 rewrote 13 commit messages that overstated something.
 - PR bodies follow `.github/pull_request_template.md`. When a check fails for reasons outside the change (the "Code scanning AI findings" check fails on account quota), explain it in a PR comment with the job-log evidence and leave the code as it is.
