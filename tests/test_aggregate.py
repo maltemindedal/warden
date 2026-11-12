@@ -150,6 +150,22 @@ def test_build_report_warns_about_a_report_it_could_not_parse(
     assert "Warning: Could not parse trivy.json:" in capsys.readouterr().out
 
 
+def test_a_report_that_cannot_be_read_is_named_by_its_file_name_and_not_its_path(
+    tmp_path: Path,
+    capsys: CaptureFixture[str],
+) -> None:
+    """The warning used to end in `str(OSError)`, which repeats the whole report path: text the
+    project controls, after a file name that already says which report it is."""
+    (tmp_path / "trivy.json").mkdir()
+
+    build_report(tmp_path)
+
+    output = capsys.readouterr().out
+    assert output.startswith("Warning: Could not parse trivy.json: ")
+    assert str(tmp_path) not in output
+    assert "Errno" not in output
+
+
 @pytest.mark.parametrize(
     ("report_file", "text", "shape", "label"),
     [

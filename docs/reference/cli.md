@@ -92,6 +92,9 @@ PowerShell habits and POSIX shells. All four spellings set the same value.
   the scanner left, and goes on to the next scanner. Like any scanner that fails to run,
   that fails the run with exit `3` (only a warning under `--no-strict`); without
   `--timeout` nothing is limited, and a DAST scan can run for as long as ZAP takes.
+- A report Warden cannot read or parse is named by its file name:
+  `Warning: Could not parse trivy.json: <reason>`. The reason is the JSON error or
+  the operating system's message (`Is a directory`), without the report's path.
 - Reports from a previous run are deleted before the scanners start. Only the
   files listed in [Report format](report-format.md#input-files) and `zap.html`
   are removed; anything else in the directory is left alone.

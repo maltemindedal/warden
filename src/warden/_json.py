@@ -85,7 +85,11 @@ def load_json(path: str | Path) -> LoadedJson:
         return LoadedJson()
     try:
         raw_data: object = json.loads(file_path.read_text(encoding="utf-8"))
-    except (OSError, UnicodeDecodeError, json.JSONDecodeError) as error:
+    except OSError as error:
+        # The caller names the report file. `str(error)` would repeat its whole path, which the
+        # project controls, so only the reason is kept.
+        return LoadedJson(error=error.strerror or str(error), found=True)
+    except (UnicodeDecodeError, json.JSONDecodeError) as error:
         return LoadedJson(error=str(error), found=True)
     except (RecursionError, ValueError) as error:
         # The decode errors above are `ValueError`s too, so what is left is the integer limit.
