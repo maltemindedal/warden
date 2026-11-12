@@ -4,11 +4,13 @@ import io
 import json
 import sys
 from collections.abc import Callable
+from pathlib import Path
 
 import pytest
 from pytest import CaptureFixture
 
 from warden import _out as out
+from warden._fs import ProjectIOError
 
 HOSTILE = "a\x1b[31mb\u202ec\u200bd\ne\rf\x00g\udcffh\u65e5\u672c\U0001f600"
 """ESC, a bidi override, a zero-width space, line breaks, NUL, a lone surrogate, and printable
@@ -153,3 +155,27 @@ def test_a_usage_error_keeps_its_wording_and_its_exit_status(capsys: CaptureFixt
     assert capsys.readouterr().err == (
         "usage: warden [-h]\nwarden: error: --project-root /nowhere is not an existing directory\n"
     )
+
+
+def test_an_entry_point_turns_an_unhandled_file_system_error_into_an_error_line_and_exit_1(
+    tmp_path: Path, capsys: CaptureFixture[str]
+) -> None:
+    """A write or lookup no caller guarded used to end the run in a traceback. It still fails
+    the gate, with status 1, and the path it names is escaped like any other project text."""
+    hostile = tmp_path / "a\x1b[31m" / "report.json"
+
+    @out.entry_point("warden")
+    def main(status: int, *, fail: bool) -> int:
+        if fail:
+            raise ProjectIOError(hostile, "Permission denied")
+        return status
+
+    assert main(3, fail=False) == 3
+    assert capsys.readouterr().err == ""
+
+    assert main(0, fail=True) == 1
+
+    captured = capsys.readouterr()
+    assert captured.out == ""
+    assert captured.err == f"warden: error: {out.neutral(str(hostile))}: Permission denied\n"
+    assert "\x1b" not in captured.err

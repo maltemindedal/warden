@@ -127,6 +127,7 @@ def _parse_args(argv: list[str] | None = None) -> AggregateCliOptions:
     )
 
 
+@out.entry_point("warden-aggregate")
 def main(argv: list[str] | None = None) -> int:
     options = _parse_args(argv)
     out.say(f"--- Aggregating Reports from {options.report_dir} ---")

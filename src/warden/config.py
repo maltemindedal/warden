@@ -377,6 +377,7 @@ def _parse_args(argv: list[str] | None = None) -> CliOptions:
     )
 
 
+@out.entry_point("warden-config")
 def main(argv: list[str] | None = None) -> int:
     options = _parse_args(argv)
     resolved = resolve_config(
