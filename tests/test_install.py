@@ -12,6 +12,7 @@ from pathlib import Path
 
 import pytest
 
+import sync_pins
 from fakes import skip_unless_executable
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
@@ -402,9 +403,6 @@ def test_the_installer_and_the_dockerfile_pin_the_same_versions_and_digests() ->
         assert _pins(docker, rf"ARG {name}_SHA256_(?:AMD64|ARM64)=([0-9a-f]{{64}})") == _pins(
             install, rf'{name}_SHA256="([0-9a-f]{{64}})"'
         )
-    assert _pins(docker, r"ghcr\.io/astral-sh/uv:(\d+\.\d+\.\d+)@") == _pins(
-        install, r'(?m)^UV_VERSION="(\S+)"'
-    )
     assert len(_pins(install, r'TRIVY_SHA256="([0-9a-f]{64})"')) == 2
 
 
@@ -474,15 +472,59 @@ def test_the_cloud_install_takes_the_uv_version_from_install_sh(tmp_path: Path) 
     assert completed.stdout == "9.9.9"
 
 
-def test_install_ps1_pins_the_same_uv_as_install_sh_and_the_dockerfile() -> None:
-    """Dependabot bumps the Dockerfile's uv stage alone; nothing else would notice the copies."""
-    docker = (REPO_ROOT / "Dockerfile").read_text(encoding="utf-8")
-    install = INSTALL_SH.read_text(encoding="utf-8")
-    powershell = (REPO_ROOT / "install.ps1").read_text(encoding="utf-8")
+def test_the_uv_pins_in_the_dockerfile_and_both_installers_agree() -> None:
+    """Dependabot bumps the Dockerfile alone; the failure names the command that fixes it."""
+    problems = sync_pins.sync(REPO_ROOT, write=False)
 
-    version = _pins(powershell, r'(?m)^\$UvVersion = "(\S+)"')
-    assert version == _pins(install, r'(?m)^UV_VERSION="(\S+)"')
-    assert version == _pins(docker, r"ghcr\.io/astral-sh/uv:(\d+\.\d+\.\d+)@")
+    assert not problems, "\n".join([*problems, f"Fix: run `{sync_pins.COMMAND}` and commit."])
+
+
+def _uv_tree(root: Path, *, docker: str, sh: str, powershell: str) -> None:
+    digest = "a" * 64
+    (root / "Dockerfile").write_text(
+        f"FROM ghcr.io/astral-sh/uv:{docker}@sha256:{digest} AS uv\n", encoding="utf-8"
+    )
+    (root / "install.sh").write_text(f'#!/bin/bash\nUV_VERSION="{sh}"\n', encoding="utf-8")
+    (root / "install.ps1").write_text(f'$UvVersion = "{powershell}"\n', encoding="utf-8")
+
+
+def test_sync_pins_copies_the_dockerfile_uv_version_into_both_installers_and_is_idempotent(
+    tmp_path: Path,
+) -> None:
+    """A Dependabot-only Dockerfile bump used to need a hand edit of both installers."""
+    _uv_tree(tmp_path, docker="0.13.7", sh="0.13.6", powershell="0.13.6")
+
+    first = sync_pins.sync(tmp_path, write=True)
+    second = sync_pins.sync(tmp_path, write=True)
+
+    assert len(first) == 2
+    assert second == []
+    assert (tmp_path / "install.sh").read_text(encoding="utf-8") == (
+        '#!/bin/bash\nUV_VERSION="0.13.7"\n'
+    )
+    assert (tmp_path / "install.ps1").read_text(encoding="utf-8") == '$UvVersion = "0.13.7"\n'
+
+
+def test_sync_pins_check_reports_drift_without_changing_a_file(tmp_path: Path) -> None:
+    """The check mode backs the parity test, so it must never write."""
+    _uv_tree(tmp_path, docker="0.13.7", sh="0.13.7", powershell="0.13.6")
+
+    problems = sync_pins.sync(tmp_path, write=False)
+
+    assert problems == ["install.ps1 pins uv 0.13.6, the Dockerfile pins 0.13.7"]
+    assert (tmp_path / "install.ps1").read_text(encoding="utf-8") == '$UvVersion = "0.13.6"\n'
+
+
+def test_sync_pins_flags_a_cloud_install_that_hardcodes_the_uv_version(tmp_path: Path) -> None:
+    """The cloud install must read install.sh, or it keeps installing the old uv."""
+    _uv_tree(tmp_path, docker="0.13.7", sh="0.13.7", powershell="0.13.7")
+    (tmp_path / ".cursor").mkdir()
+    (tmp_path / ".cursor/cloud-install.sh").write_text('UV_VERSION="0.13.5"\n', encoding="utf-8")
+
+    problems = sync_pins.sync(tmp_path, write=False)
+
+    assert len(problems) == 1
+    assert ".cursor/cloud-install.sh hardcodes UV_VERSION" in problems[0]
 
 
 def _function_text(name: str) -> str:

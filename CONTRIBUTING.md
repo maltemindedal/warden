@@ -115,9 +115,11 @@ to 3.11). No cooldown is configured, so Dependabot's own default delay for versi
 updates applies; security updates are never delayed. There is one exception: for
 the Dockerfile Dependabot applies that delay only to Docker Hub images, so a pull
 request for the uv stage (`ghcr.io/astral-sh/uv`) appears as soon as the release
-does. Check the release's age before merging it, and change `UV_VERSION` in
-`install.sh` and `$UvVersion` in `install.ps1` to the same version in that pull
-request (a test fails until all three agree).
+does. Check the release's age before merging it, then run
+`python3 tools/sync_pins.py` on that pull request's branch. It copies the
+Dockerfile's version into `UV_VERSION` in `install.sh` and `$UvVersion` in
+`install.ps1` (a test fails until all three agree, and its message names this
+command).
 
 The Trivy and Gitleaks versions and digests are Dockerfile build args that
 Dependabot cannot read: change them by hand, in the `Dockerfile` and in `install.sh`

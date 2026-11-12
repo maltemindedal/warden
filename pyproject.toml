@@ -50,9 +50,10 @@ include = [
 ]
 
 [tool.pytest.ini_options]
-# `tests` is on the path so the shared fake in tests/fakes.py imports by name.
+# `tests` is on the path so the shared fake in tests/fakes.py imports by name, and `tools` so
+# tests can import tools/sync_pins.py.
 # ty's environment.root below must list the same roots.
-pythonpath = ["src", "tests"]
+pythonpath = ["src", "tests", "tools"]
 testpaths = ["tests"]
 # Fail on a misspelled marker or config key, on any warning, and on an xfail that starts passing.
 addopts = ["--strict-markers", "--strict-config"]
@@ -62,7 +63,7 @@ xfail_strict = true
 [tool.ruff]
 line-length = 100
 target-version = "py311"
-src = ["src", "tests"]
+src = ["src", "tests", "tools"]
 
 [tool.ruff.lint]
 # S: security (bandit), BLE: blind `except`, PGH: blanket `noqa` / `type: ignore`.
@@ -82,7 +83,7 @@ indent-style = "space"
 
 [tool.ty.environment]
 python-version = "3.11"
-root = ["src", "tests"]
+root = ["src", "tests", "tools"]
 
 [tool.ty.rules]
 all = "error"
