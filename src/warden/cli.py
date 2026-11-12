@@ -10,6 +10,7 @@ from . import aggregate, config, tooling
 from ._json import JsonLimitError
 from ._models import CliOptions, ResolvedConfig
 from ._scanners import SCANNERS, Scanner, rewrite_zap_target, url_problem
+from ._summary import print_summary
 
 _MAX_TIMEOUT_SECONDS = 4_294_967
 """Windows takes a timeout in milliseconds as an unsigned 32-bit number, so nothing larger works."""
@@ -228,6 +229,7 @@ def run_audit(options: CliOptions, *, runner: tooling.CommandRunner) -> int:
     except JsonLimitError as error:
         return out.error("warden", f"{error}, {aggregate.FAILS_CLOSED}")
     incomplete = _incomplete(attempted, tools_run, skipped_for_url) if options.strict else None
+    print_summary(verdict=verdict, output_file=output_file, incomplete=incomplete is not None)
     if incomplete is not None:
         out.say()
         out.say(f"STRICT: {incomplete}")

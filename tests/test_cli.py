@@ -454,6 +454,30 @@ def test_a_missing_scanner_is_exit_3_by_default_and_with_strict_but_passes_with_
     assert "AUDIT COMPLETE!" in opt_out_output
 
 
+def test_an_incomplete_run_does_not_print_pass_above_its_strict_line(
+    tmp_path: Path, capsys: CaptureFixture[str]
+) -> None:
+    """A run that exits 3 printed `PASS: No High/Critical issues found.` two lines above
+    `STRICT:`. The scanner that left no report is the one that might have found something, so
+    the line now says which reports its claim covers. `--no-strict` still prints `PASS`."""
+    runner = RecordingRunner(returncode=None, warning="trivy was not found on PATH.")
+
+    default_exit = cli.main(["--project-root", str(tmp_path)], runner=runner)
+    default_output = capsys.readouterr().out
+    opt_out_exit = _strict(tmp_path, runner, "--no-strict")
+    opt_out_output = capsys.readouterr().out
+
+    assert (default_exit, opt_out_exit) == (cli.EXIT_INCOMPLETE, 0)
+    assert "PASS" not in default_output
+    assert (
+        "INCOMPLETE: No High/Critical issues found in the reports that were read. See "
+        in default_output
+    )
+    assert default_output.index("INCOMPLETE:") < default_output.index("STRICT:")
+    assert "PASS: No High/Critical issues found. See " in opt_out_output
+    assert "INCOMPLETE" not in opt_out_output
+
+
 def test_the_last_of_strict_and_no_strict_wins(tmp_path: Path) -> None:
     """A pipeline that appends `--strict` after an inherited `--no-strict` gets strict back."""
     runner = RecordingRunner(returncode=None, warning="trivy was not found on PATH.")
@@ -611,6 +635,8 @@ def test_strict_leaves_a_failing_finding_as_exit_1_but_still_says_what_is_incomp
     assert exit_code == 1
     assert "STRICT: Trivy, Semgrep did not produce a usable report" in output
     assert "AUDIT FAILED!" in output
+    assert "FAIL: High/Critical issues found. See " in output
+    assert "INCOMPLETE:" not in output
 
 
 def test_strict_holds_an_unusable_dast_url_against_the_run(

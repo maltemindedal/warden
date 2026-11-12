@@ -67,7 +67,9 @@ PowerShell habits and POSIX shells. All four spellings set the same value.
   leave a report of the right shape (a JSON object for Trivy, Semgrep and ZAP, an
   array for Gitleaks) is named after the summary as
   `STRICT: <tools> did not produce a usable report, so the scan is incomplete; to accept an incomplete scan, pass --no-strict.`,
-  and the run exits `3`. A missing scanner counts: on a machine without Trivy or
+  and the run exits `3`. The summary's last line then reads
+  `INCOMPLETE: No High/Critical issues found in the reports that were read. See <report>`
+  in place of `PASS: ...`: a run that exits `3` never prints `PASS`. A missing scanner counts: on a machine without Trivy or
   Gitleaks on `PATH`, `warden` exits `3` until you install them, run the Docker image,
   or pass `--no-strict`. The exit status of the scanner is not what counts, because ZAP
   exits non-zero when it has alerts and still writes its report; a clean scan is
@@ -118,7 +120,7 @@ PowerShell habits and POSIX shells. All four spellings set the same value.
 | `0` | No Critical or High findings. Printed as `PASS`. |
 | `1` | At least one Critical or High finding, printed as `FAIL`; or a path Warden owns cannot be used (`.security_reports` is a regular file, a report in it is a directory, `security_audit.json` is a directory); or a report is more JSON than Python can parse (nested past about 1,000 levels on Python 3.11 or 10,000 from 3.12, or holding an integer of more than 4,300 digits), which may hold findings, reported once every scanner has run. Both of the last two are printed as `warden: error: ...` on stderr, and neither writes `security_audit.json`. Any other path Warden cannot look up, write or delete ends the run the same way, as `warden: error: <path>: <reason>`. |
 | `2` | Invalid arguments, including a `--project-root` that is not an existing directory, and a `--project-root` or `--config` that cannot be resolved because it is a symbolic link loop (`warden: error: argument --config: cannot resolve <path>: symbolic link loop`). Nothing is scanned or written. |
-| `3` | No finding failed the build, but a scanner that ran left no usable report, or no scanner ran. Printed as `AUDIT INCOMPLETE!` after a `STRICT:` line. Never with `--no-strict`. The report is still written. |
+| `3` | No finding failed the build, but a scanner that ran left no usable report, or no scanner ran. Printed as `INCOMPLETE` in the summary, then a `STRICT:` line and `AUDIT INCOMPLETE!`. Never with `--no-strict`. The report is still written. |
 
 Medium, Low, Info, and Unknown findings never affect the exit code. The
 threshold is fixed at Critical and High and is not currently configurable from
