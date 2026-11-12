@@ -72,6 +72,10 @@ def rewrite_zap_target(url: str) -> str:
     return f"{url[:host_start]}host.docker.internal{host['dot']}{url[host.end() :]}"
 
 
+MAX_URL_LENGTH: Final[int] = 2048
+"""A scan target is a base URL. The value is printed and handed to ZAP on its command line."""
+
+
 def url_problem(url: str) -> str | None:
     """Why `url` cannot be a DAST target, or `None` if it looks like one.
 
@@ -79,6 +83,8 @@ def url_problem(url: str) -> str | None:
     lowercase prefix test. A project supplies the URL, so an escape sequence, a bidirectional
     override or any other character that is not plainly printable must never reach the terminal.
     """
+    if len(url) > MAX_URL_LENGTH:
+        return f"it is longer than {MAX_URL_LENGTH} characters"
     if not url.isprintable():
         return "it contains control or non-printable characters"
     lead = _HTTP_LEAD.match(url)
