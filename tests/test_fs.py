@@ -27,13 +27,17 @@ def test_a_regular_file_is_read_as_path_read_text_reads_it(
     path = tmp_path / ".warden.yaml"
     path.write_bytes(b"\xef\xbb\xbfurl: x\r\ntools:\r\n")
 
-    assert fs.read_text(path, accept=accept, encoding="utf-8-sig") == fs.Text("url: x\ntools:\n")
+    assert fs.read_text(path, accept=accept, max_bytes=None, encoding="utf-8-sig") == fs.Text(
+        "url: x\ntools:\n"
+    )
 
 
 @pytest.mark.parametrize("accept", EVERY_ACCEPT, ids=lambda accept: accept.name)
 def test_a_name_nothing_has_is_absent(tmp_path: Path, accept: fs.Accept) -> None:
-    assert fs.read_bytes(tmp_path / "missing", accept=accept) == fs.Absent()
-    assert fs.read_bytes(tmp_path / "missing" / "below", accept=accept) == fs.Absent()
+    assert fs.read_bytes(tmp_path / "missing", accept=accept, max_bytes=None) == fs.Absent()
+    assert (
+        fs.read_bytes(tmp_path / "missing" / "below", accept=accept, max_bytes=None) == fs.Absent()
+    )
 
 
 @pytest.mark.parametrize("accept", EVERY_ACCEPT, ids=lambda accept: accept.name)
@@ -42,7 +46,7 @@ def test_a_path_too_long_to_look_up_is_unlocatable_not_absent(
 ) -> None:
     """`Path.exists()` raises ENAMETOOLONG before Python 3.14, which was a traceback (2825ae7).
     It must not read as "no file" either: a report in this state may hold findings."""
-    outcome = fs.read_text(tmp_path / ("a" * 300), accept=accept, encoding="utf-8")
+    outcome = fs.read_text(tmp_path / ("a" * 300), accept=accept, max_bytes=None, encoding="utf-8")
 
     assert isinstance(outcome, fs.Unlocatable)
     assert outcome.reason != ""
@@ -57,10 +61,10 @@ def test_a_symlink_is_followed_only_where_the_caller_accepts_one(tmp_path: Path)
     link = tmp_path / "link"
     symlink_or_skip(link, target)
 
-    refused = fs.read_bytes(link, accept=fs.Accept.REGULAR_NO_LINK)
+    refused = fs.read_bytes(link, accept=fs.Accept.REGULAR_NO_LINK, max_bytes=None)
 
     assert refused == fs.NotRegular("a symbolic link")
-    assert fs.read_bytes(link, accept=fs.Accept.ANYTHING) == fs.Bytes(b"secret")
+    assert fs.read_bytes(link, accept=fs.Accept.ANYTHING, max_bytes=None) == fs.Bytes(b"secret")
 
 
 def test_a_dangling_symlink_is_not_mistaken_for_no_file_at_a_project_path(tmp_path: Path) -> None:
@@ -69,8 +73,10 @@ def test_a_dangling_symlink_is_not_mistaken_for_no_file_at_a_project_path(tmp_pa
     link = tmp_path / ".warden.yaml"
     symlink_or_skip(link, tmp_path / "nowhere")
 
-    assert fs.read_bytes(link, accept=fs.Accept.REGULAR_NO_LINK) == fs.NotRegular("a symbolic link")
-    assert fs.read_bytes(link, accept=fs.Accept.ANYTHING) == fs.Absent()
+    assert fs.read_bytes(link, accept=fs.Accept.REGULAR_NO_LINK, max_bytes=None) == fs.NotRegular(
+        "a symbolic link"
+    )
+    assert fs.read_bytes(link, accept=fs.Accept.ANYTHING, max_bytes=None) == fs.Absent()
 
 
 @needs_named_pipes
@@ -80,7 +86,7 @@ def test_a_named_pipe_is_refused_without_being_opened(tmp_path: Path) -> None:
     os.mkfifo(tmp_path / "pipe")
     script = (
         "import sys; from pathlib import Path; from warden import _fs as fs; "
-        "print(fs.read_bytes(Path(sys.argv[1]), accept=fs.Accept.REGULAR_NO_LINK))"
+        "print(fs.read_bytes(Path(sys.argv[1]), accept=fs.Accept.REGULAR_NO_LINK, max_bytes=None))"
     )
 
     completed = subprocess.run(
@@ -97,10 +103,10 @@ def test_a_named_pipe_is_refused_without_being_opened(tmp_path: Path) -> None:
 def test_a_directory_is_not_regular_or_is_unreadable_and_never_raises(tmp_path: Path) -> None:
     """`--config <directory>` reads whatever is there, and the read then fails with the reason
     the warning has always printed."""
-    refused = fs.read_bytes(tmp_path, accept=fs.Accept.REGULAR_NO_LINK)
+    refused = fs.read_bytes(tmp_path, accept=fs.Accept.REGULAR_NO_LINK, max_bytes=None)
 
     assert refused == fs.NotRegular("a directory")
-    anything = fs.read_bytes(tmp_path, accept=fs.Accept.ANYTHING)
+    anything = fs.read_bytes(tmp_path, accept=fs.Accept.ANYTHING, max_bytes=None)
 
     assert isinstance(anything, fs.Unreadable)
     assert anything.reason != ""
@@ -113,10 +119,27 @@ def test_bytes_that_are_not_the_encoding_are_unreadable_with_the_codec_message(
     path = tmp_path / "legacy.yaml"
     path.write_bytes(b"# caf\xe9\n")
 
-    outcome = fs.read_text(path, accept=fs.Accept.REGULAR_NO_LINK, encoding="utf-8")
+    outcome = fs.read_text(path, accept=fs.Accept.REGULAR_NO_LINK, max_bytes=None, encoding="utf-8")
 
     assert isinstance(outcome, fs.Unreadable)
     assert "codec can't decode byte 0xe9" in outcome.reason
+
+
+def test_a_file_longer_than_the_caller_will_hold_is_unreadable_and_read_no_further(
+    tmp_path: Path,
+) -> None:
+    """An 18 MB `.warden.yaml` took ten seconds to parse. `/dev/zero` never ends, so a read of
+    it that returns at all shows that reading stops just past the limit."""
+    path = tmp_path / "config"
+    path.write_bytes(b"a" * 11)
+    at_the_limit = fs.read_bytes(path, accept=fs.Accept.REGULAR_NO_LINK, max_bytes=11)
+    over_it = fs.read_bytes(path, accept=fs.Accept.REGULAR_NO_LINK, max_bytes=10)
+
+    assert at_the_limit == fs.Bytes(b"a" * 11)
+    assert over_it == fs.Unreadable("larger than 10 bytes")
+    if Path("/dev/zero").exists():
+        endless = fs.read_bytes(Path("/dev/zero"), accept=fs.Accept.ANYTHING, max_bytes=10)
+        assert endless == fs.Unreadable("larger than 10 bytes")
 
 
 def test_append_line_adds_the_line_once_and_the_newline_the_last_line_lacks(
@@ -283,8 +306,10 @@ def test_a_symlink_loop_never_escapes_as_runtime_error(tmp_path: Path) -> None:
         assert error.reason == "symbolic link loop"
 
     assert not fs.is_dir(loop)
-    assert fs.read_bytes(loop, accept=fs.Accept.ANYTHING) == fs.Absent()
-    assert fs.read_bytes(loop, accept=fs.Accept.REGULAR_NO_LINK) == fs.NotRegular("a symbolic link")
+    assert fs.read_bytes(loop, accept=fs.Accept.ANYTHING, max_bytes=None) == fs.Absent()
+    assert fs.read_bytes(loop, accept=fs.Accept.REGULAR_NO_LINK, max_bytes=None) == fs.NotRegular(
+        "a symbolic link"
+    )
 
 
 def test_is_dir_is_false_for_a_path_it_cannot_look_up(tmp_path: Path) -> None:

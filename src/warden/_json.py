@@ -85,7 +85,7 @@ def load_json(path: str | Path) -> LoadedJson:
     file_path = Path(path)
     # A report is read through a symlink, as the scanner wrote it: the directory is Warden's own,
     # and refusing one could only drop findings.
-    match fs.read_text(file_path, accept=fs.Accept.ANYTHING, encoding="utf-8"):
+    match fs.read_text(file_path, accept=fs.Accept.ANYTHING, max_bytes=None, encoding="utf-8"):
         case fs.Absent():
             return LoadedJson()
         case fs.Unlocatable(reason):
