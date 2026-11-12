@@ -1,17 +1,14 @@
 from __future__ import annotations
 
-import argparse
-import io
-import sys
 from dataclasses import replace
 from pathlib import Path
 from typing import cast
 
+from . import _out as out
 from . import aggregate, config, tooling
 from ._json import JsonLimitError
 from ._models import CliOptions, ResolvedConfig
 from ._scanners import SCANNERS, Scanner, rewrite_zap_target, url_problem
-from ._text import shown
 
 _MAX_TIMEOUT_SECONDS = 4_294_967
 """Windows takes a timeout in milliseconds as an unsigned 32-bit number, so nothing larger works."""
@@ -24,7 +21,7 @@ _OPT_OUT = "to accept an incomplete scan, pass --no-strict."
 
 
 def _parse_args(argv: list[str] | None = None) -> CliOptions:
-    parser = argparse.ArgumentParser(prog="warden", description="Run the Warden security audit.")
+    parser = out.ArgumentParser(prog="warden", description="Run the Warden security audit.")
     parser.add_argument(
         "-u",
         "--url",
@@ -104,41 +101,34 @@ def _describe(error: OSError) -> str:
     )
 
 
-def _fail(message: str) -> int:
-    """A path or a report the project controls that Warden cannot use: a failed run, not a
-    traceback."""
-    print(f"warden: error: {message}", file=sys.stderr)
-    return 1
-
-
 def _print_result(result: tooling.ToolRunResult) -> None:
     _print_status(result)
     if result.report_warning is not None:
-        print(f"   -> Warning: {result.report_warning}")
+        out.say(f"   -> Warning: {result.report_warning}")
 
 
 def _print_status(result: tooling.ToolRunResult) -> None:
     if result.returncode is None and result.warning is not None:
-        print(f"   -> Warning: {result.warning}")
+        out.say(f"   -> Warning: {result.warning}")
         return
     if result.succeeded or result.report_written:
-        print("   -> Done.")
+        out.say("   -> Done.")
         return
     if result.warning is not None:
-        print(f"   -> Warning: {result.warning}")
+        out.say(f"   -> Warning: {result.warning}")
         return
-    print(f"   -> Warning: {result.scanner.label} exited with status {result.returncode}.")
+    out.say(f"   -> Warning: {result.scanner.label} exited with status {result.returncode}.")
 
 
 def _announce_zap_target(url: str) -> None:
     """A URL-targeting scanner runs in a container, where localhost is not the host."""
     target = rewrite_zap_target(url)
     if target != url:
-        print(
+        out.say(
             "      (Detected localhost: switching to "
             "'host.docker.internal' for Docker compatibility)"
         )
-        print(f"      Targeting: {target}")
+        out.say(f"      Targeting: {target}")
 
 
 def _url_scanners(resolved: ResolvedConfig) -> tuple[str, ...]:
@@ -170,16 +160,16 @@ def _run_enabled_tools(
     total = len(SCANNERS)
     attempted: list[str] = []
 
-    print()
+    out.say()
     for step, scanner in enumerate(SCANNERS, start=1):
         stage = f"[{step}/{total}]"
         enabled = scanner.key in resolved.enabled_tools
         reason = _skip_reason(scanner, enabled=enabled, url=resolved.url)
         if reason is not None:
-            print(f"{stage} Skipping {scanner.label} ({reason}).")
+            out.say(f"{stage} Skipping {scanner.label} ({reason}).")
             continue
 
-        print(f"{stage} Running {scanner.label}...")
+        out.say(f"{stage} Running {scanner.label}...")
         if scanner.requires_url:
             _announce_zap_target(resolved.url)
         request = tooling.scan_request(
@@ -206,21 +196,21 @@ def run_audit(options: CliOptions, *, runner: tooling.CommandRunner) -> int:
         report_dir = tooling.prepare_report_dir(options.project_root)
         tooling.clear_output_file(output_file)
     except OSError as error:
-        return _fail(f"cannot prepare the report paths: {_describe(error)}")
+        return out.error("warden", f"cannot prepare the report paths: {_describe(error)}")
 
-    print("STARTING SECURITY AUDIT")
-    print(f"   Target: {options.project_root}")
+    out.say("STARTING SECURITY AUDIT")
+    out.say(f"   Target: {options.project_root}")
     for warning in resolved.warnings:
-        print(f"Warning: {warning}")
+        out.say(f"Warning: {warning}")
     skipped_for_url: tuple[str, ...] = ()
     if resolved.url:
         problem = url_problem(resolved.url)
         if problem is None:
-            print(f"   DAST URL: {resolved.url}")
+            out.say(f"   DAST URL: {resolved.url}")
         else:
             skipped_for_url = _url_scanners(resolved)
-            shown_url = shown(resolved.url)
-            print(
+            shown_url = out.shown(resolved.url)
+            out.say(
                 f"Warning: the DAST URL {shown_url} is not usable ({problem}): "
                 f"skipping {', '.join(skipped_for_url)}."
             )
@@ -230,38 +220,37 @@ def run_audit(options: CliOptions, *, runner: tooling.CommandRunner) -> int:
         options.project_root, report_dir, resolved, runner, options.timeout
     )
 
-    print("\n[*] Generating Final Report...")
+    out.say()
+    out.say("[*] Generating Final Report...")
     try:
         verdict, tools_run = aggregate.generate_report(
             report_dir=report_dir, output_file=output_file
         )
     except OSError as error:
-        return _fail(f"cannot read the reports or write {output_file.name}: {_describe(error)}")
+        return out.error(
+            "warden", f"cannot read the reports or write {output_file.name}: {_describe(error)}"
+        )
     except JsonLimitError as error:
-        return _fail(f"{error}, {aggregate.FAILS_CLOSED}")
+        return out.error("warden", f"{error}, {aggregate.FAILS_CLOSED}")
     incomplete = _incomplete(attempted, tools_run, skipped_for_url) if options.strict else None
     if incomplete is not None:
-        print(f"\nSTRICT: {incomplete}")
+        out.say()
+        out.say(f"STRICT: {incomplete}")
     if verdict.failed:
-        print("\nAUDIT FAILED!")
-        print(f"Report saved to: {output_file}")
+        out.say()
+        out.say("AUDIT FAILED!")
+        out.say(f"Report saved to: {output_file}")
         return 1
     if incomplete is not None:
-        print("\nAUDIT INCOMPLETE!")
-        print(f"Report saved to: {output_file}")
+        out.say()
+        out.say("AUDIT INCOMPLETE!")
+        out.say(f"Report saved to: {output_file}")
         return EXIT_INCOMPLETE
 
-    print("\nAUDIT COMPLETE!")
-    print(f"Report saved to: {output_file}")
+    out.say()
+    out.say("AUDIT COMPLETE!")
+    out.say(f"Report saved to: {output_file}")
     return 0
-
-
-def _print_unencodable_text_escaped() -> None:
-    """Warden echoes text the project supplied (a config warning, a URL), and a console that
-    cannot encode it (a Windows code page on a redirected stdout) must not turn that into a
-    traceback: print it as `\\uXXXX` instead, as Python already does for stderr."""
-    if isinstance(sys.stdout, io.TextIOWrapper):
-        sys.stdout.reconfigure(errors="backslashreplace")
 
 
 def main(
@@ -269,5 +258,4 @@ def main(
     *,
     runner: tooling.CommandRunner = tooling.run_subprocess,
 ) -> int:
-    _print_unencodable_text_escaped()
     return run_audit(_parse_args(argv), runner=runner)

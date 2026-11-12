@@ -1,16 +1,14 @@
 from __future__ import annotations
 
-import argparse
-import json
 import os
-import sys
 import textwrap
 from pathlib import Path
 from typing import LiteralString, cast
 
+from . import _out as out
 from ._models import CliOptions, ResolvedConfig
+from ._out import shown
 from ._scanners import SCANNERS
-from ._text import shown
 
 ScalarValue = str | int | bool
 RawConfigValue = ScalarValue | list[str] | dict[str, ScalarValue]
@@ -361,7 +359,7 @@ def resolve_config(
 
 
 def _parse_args(argv: list[str] | None = None) -> CliOptions:
-    parser = argparse.ArgumentParser(prog="warden-config")
+    parser = out.ArgumentParser(prog="warden-config")
     parser.add_argument("project_root", help="Project root directory")
     parser.add_argument("--cli-url", default="", help="URL passed via CLI (overrides config)")
     parser.add_argument("--config", default=None, help=f"Path to {CONFIG_FILENAME}")
@@ -387,17 +385,12 @@ def main(argv: list[str] | None = None) -> int:
     )
 
     for warning in resolved.warnings:
-        print(f"Warning: {warning}", file=sys.stderr)
-    print(
-        json.dumps(
-            {
-                "url": resolved.url,
-                "exclude_dirs": resolved.exclude_dirs,
-                "tools": {
-                    scanner.key: scanner.key in resolved.enabled_tools for scanner in SCANNERS
-                },
-            },
-            ensure_ascii=False,
-        )
+        out.say_err(f"Warning: {warning}")
+    out.json_document(
+        {
+            "url": resolved.url,
+            "exclude_dirs": resolved.exclude_dirs,
+            "tools": {scanner.key: scanner.key in resolved.enabled_tools for scanner in SCANNERS},
+        }
     )
     return 0
