@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import ast
 import json
 import time
 from pathlib import Path
@@ -273,3 +274,51 @@ def test_a_hostile_url_is_checked_in_linear_time() -> None:
 
     assert result == "it has no host"
     assert time.perf_counter() - started < 5
+
+
+SOURCE_DIR = Path(__file__).resolve().parents[1] / "src" / "warden"
+
+
+def _registry_literals(source_dir: Path) -> list[str]:
+    """Where a module other than `_scanners.py` spells a scanner's label, key or report file.
+
+    The match is the whole string constant, so prose in a docstring or a help text that mentions
+    a tool does not count, while `"ZAP"`, `"trivy"` and `"semgrep.json"` do.
+    """
+    facts = {
+        text.casefold() for scanner in SCANNERS for text in (scanner.label, scanner.report_file)
+    } | {scanner.key for scanner in SCANNERS}
+    found: list[str] = []
+    for path in sorted(source_dir.glob("*.py")):
+        if path.name == "_scanners.py":
+            continue
+        constants = [
+            node
+            for node in ast.walk(ast.parse(path.read_text(encoding="utf-8")))
+            if isinstance(node, ast.Constant) and isinstance(node.value, str)
+        ]
+        for node in sorted(constants, key=lambda node: node.lineno):
+            if str(node.value).casefold() in facts:
+                found.append(f"{path.name}:{node.lineno} {node.value!r}")
+    return found
+
+
+def test_no_module_but_the_registry_spells_a_scanner_label_key_or_report_file() -> None:
+    """Nine parallel tables (72f65dc) and a hard-coded `"ZAP"` in cli.py (bf9bbd8) drifted apart."""
+    found = _registry_literals(SOURCE_DIR)
+
+    assert not found, (
+        "A scanner fact is written outside the registry. Read it from "
+        "_scanners.SCANNERS (grow a field on Scanner if none holds it):\n" + "\n".join(found)
+    )
+
+
+def test_the_literal_check_flags_a_hard_coded_tool_name_and_ignores_prose(tmp_path: Path) -> None:
+    """The check must not pass because it matches nothing, nor fail on a docstring."""
+    (tmp_path / "_scanners.py").write_text('KEY = "trivy"\n', encoding="utf-8")
+    (tmp_path / "cli.py").write_text(
+        '"""Runs Trivy and ZAP."""\nmissing = ["ZAP"]\nreport = "semgrep.json"\n',
+        encoding="utf-8",
+    )
+
+    assert _registry_literals(tmp_path) == ["cli.py:2 'ZAP'", "cli.py:3 'semgrep.json'"]

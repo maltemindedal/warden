@@ -41,7 +41,7 @@ Commits and PRs:
 Code:
 
 - Hostile input includes what looks impossible: symlinks, FIFOs, NUL bytes, huge values. At a path Warden owns, replace or skip a symlink or FIFO rather than following it. Escape project text with `_text.shown` before printing it, keep parsing linear-time, turn a scanner problem into a warning rather than a traceback, and when in doubt keep the finding: dropping one is never the safe way to be wrong.
-- Every scanner fact lives in its `Scanner` record in the single `SCANNERS` registry in `_scanners.py`; grow a field rather than writing a second list of tools. A new scanner also needs its parser, command builder, a fixture in `tests/fixtures/`, the hard-coded order in `tests/test_scanners.py`, the `Dockerfile`, both installers, the table in `README.md` and the reference docs.
+- Every scanner fact lives in its `Scanner` record in the single `SCANNERS` registry in `_scanners.py`; grow a field rather than writing a second list of tools. `tests/test_scanners.py` fails on a scanner label, key or report file name written as a string anywhere in `src/warden/` outside `_scanners.py`. A new scanner also needs its parser, command builder, a fixture in `tests/fixtures/`, the hard-coded order in `tests/test_scanners.py`, the `Dockerfile`, both installers, the table in `README.md` and the reference docs.
 - New behaviour goes behind a CLI flag, not a `.warden.yaml` key: an older Warden rejects an unknown flag but silently ignores an unknown key. The Critical/High threshold stays fixed, and runtime dependencies stay `rich` and `semgrep` (which is why `config.py` parses a YAML subset by hand).
 
 Tests:
