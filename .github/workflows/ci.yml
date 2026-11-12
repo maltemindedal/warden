@@ -66,7 +66,40 @@ jobs:
         with:
           persist-credentials: false
 
+      # Strict, so a scanner that breaks fails this job instead of leaving a warning and PASS.
       - name: Warden scan
         uses: ./
         with:
           url: ${{ inputs.url }}
+          strict: "true"
+
+      - name: Set up uv
+        uses: astral-sh/setup-uv@68559e99cc807c1eb7e9238fd43a15bba460eec2 # v10.3.3
+
+      - name: Set up Python
+        uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0 # v7.1.0
+        with:
+          python-version: "3.11"
+
+      # Check Warden's flags against the very Trivy and Gitleaks binaries the scan above ran,
+      # copied out of the image the action built. A skip here means a tool is missing, so it
+      # fails the job.
+      - name: Scanner flags exist in the pinned tools
+        env:
+          UV_LOCKED: "1"
+        run: |
+          tools="$RUNNER_TEMP/warden-tools"
+          mkdir -p "$tools"
+          container="$(docker create warden:action)"
+          docker cp "$container:/usr/local/bin/trivy" "$tools/trivy"
+          docker cp "$container:/usr/local/bin/gitleaks" "$tools/gitleaks"
+          docker rm "$container"
+          export PATH="$tools:$PATH"
+          trivy --version
+          gitleaks version
+          out="$(uv run pytest tests/test_scanner_flags.py -rs)" || { echo "$out"; exit 1; }
+          echo "$out"
+          if grep -q SKIPPED <<<"$out"; then
+            echo "::error::A scanner flag check was skipped, so a tool is missing."
+            exit 1
+          fi
