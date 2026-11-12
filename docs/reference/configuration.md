@@ -49,6 +49,15 @@ was found: Warden prints
 and reads no further than the limit. A config of a few keys is under a kilobyte,
 and every `exclude_dirs` entry becomes an argument on a scanner's command line.
 
+A config file that is there and is not read fails `warden` with exit `3` in strict
+mode, the default: its `target_url` would have started a ZAP scan, and with the
+defaults the run would pass without it. That covers a symbolic link or a file
+that is not regular at the project's `.warden.yaml`, a file over the size limit
+or that cannot be read, and a `--config` path that does not exist. With
+`--no-strict` the warning is all there is. `warden-config` has no strict mode: it
+prints the warning and the defaults and exits `0`. See
+[CLI reference](cli.md#behaviour).
+
 Warden falls back to defaults rather
 than stopping, so a mistake never turns into an error, but it does turn into a
 **warning** for what it can see: a file that cannot be read or does not exist

@@ -307,7 +307,7 @@ def resolve_config(
 
     raw: RawConfig = {}
     notes = _Notes(prefix=f"{path.name}: ")
-    warnings: list[str] = []
+    not_read: str | None = None  # why the file's settings are not applied, when they are not
     # The project's own `.warden.yaml` is untrusted: a named pipe there blocks forever,
     # `/dev/zero` never ends, and a symlink can point at any file the user can read, whose lines
     # the notes below would quote. So only a regular file that is not a link is read. A path
@@ -321,21 +321,22 @@ def resolve_config(
                 _note_shapes(raw, notes)
             except ValueError as error:  # the parser is meant to be total: the net under it
                 raw = {}
-                warnings.append(f"{path.name} could not be read ({error}): using the defaults.")
+                not_read = f"{path.name} could not be read ({error}): using the defaults."
         case fs.Absent():
             if config_path is not None:
-                warnings.append(f"--config {shown(str(path))} does not exist: using the defaults.")
+                not_read = f"--config {shown(str(path))} does not exist: using the defaults."
         case fs.NotRegular("a symbolic link"):
-            warnings.append(
+            not_read = (
                 f"{path.name} is a symbolic link, which is not followed: using the defaults "
                 "(pass --config to read the file it points to)."
             )
         case fs.NotRegular():
-            warnings.append(f"{path.name} is not a regular file: using the defaults.")
+            not_read = f"{path.name} is not a regular file: using the defaults."
         case fs.Unlocatable(reason) | fs.Unreadable(reason):
-            warnings.append(f"{path.name} could not be read ({reason}): using the defaults.")
+            not_read = f"{path.name} could not be read ({reason}): using the defaults."
         case _ as unreachable:
             assert_never(unreachable)
+    warnings = [not_read] if not_read is not None else []
 
     exclude_dirs = _without_nul(_extract_exclude_dirs(raw.get("exclude_dirs")), notes)
     enabled_tools = _extract_enabled_tools(raw.get("tools"))
@@ -368,6 +369,7 @@ def resolve_config(
         exclude_dirs=exclude_dirs,
         enabled_tools=enabled_tools,
         warnings=tuple(warnings),
+        unread_config=path.name if not_read is not None else None,
     )
 
 

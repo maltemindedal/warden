@@ -6,6 +6,7 @@ import os
 import shutil
 import subprocess
 import sys
+from collections.abc import Callable
 from pathlib import Path
 
 import pytest
@@ -648,6 +649,74 @@ def test_strict_holds_an_unusable_dast_url_against_the_run(
 
     assert exit_code == cli.EXIT_INCOMPLETE
     assert "STRICT: ZAP did not produce a usable report" in capsys.readouterr().out
+
+
+def _symlinked_config(project: Path) -> list[str]:
+    shared = project.parent / "shared.yaml"
+    shared.write_text('target_url: "http://staging.example"\n', encoding="utf-8")
+    symlink_or_skip(project / ".warden.yaml", shared)
+    return []
+
+
+def _oversized_config(project: Path) -> list[str]:
+    padding = "# " + "x" * 70_000
+    (project / ".warden.yaml").write_text(
+        f'target_url: "http://staging.example"\n{padding}\n', encoding="utf-8"
+    )
+    return []
+
+
+def _oversized_config_flag(project: Path) -> list[str]:
+    _oversized_config(project)
+    given = project.parent / "given.yaml"
+    (project / ".warden.yaml").rename(given)
+    return ["--config", str(given)]
+
+
+def _missing_config_flag(project: Path) -> list[str]:
+    return ["--config", str(project.parent / "typo.yaml")]
+
+
+@pytest.mark.parametrize(
+    ("arrange", "name"),
+    [
+        (_symlinked_config, ".warden.yaml"),
+        (_oversized_config, ".warden.yaml"),
+        (_oversized_config_flag, "given.yaml"),
+        (_missing_config_flag, "typo.yaml"),
+    ],
+)
+def test_strict_holds_a_config_file_that_was_not_read_against_the_run(
+    arrange: Callable[[Path], list[str]], name: str, tmp_path: Path, capsys: CaptureFixture[str]
+) -> None:
+    """A `.warden.yaml` that is a symlink, or a config over 64 KiB, is refused and the defaults
+    are used, so its `target_url` was dropped: ZAP was skipped as "no URL provided", the other
+    three reports were usable, and the default strict run printed PASS and exited 0 on a
+    project that asked for a DAST scan. `--no-strict` keeps the warning and the pass."""
+    project = tmp_path / "project"
+    project.mkdir()
+    flags = arrange(project)
+    runner = RecordingRunner(report_texts=USABLE_REPORTS)
+
+    exit_code = _strict(project, runner, *flags)
+    output = capsys.readouterr().out
+    opt_out_exit = _strict(project, runner, *flags, "--no-strict")
+    opt_out_output = capsys.readouterr().out
+
+    assert exit_code == cli.EXIT_INCOMPLETE
+    assert (
+        f"STRICT: {name} was not read, so what it asks for (a DAST target_url, say) was not "
+        "scanned and the scan is incomplete; to accept an incomplete scan, pass --no-strict."
+    ) in output
+    assert "PASS:" not in output
+    assert opt_out_exit == 0
+    assert "using the defaults" in opt_out_output
+    assert "STRICT" not in opt_out_output
+
+
+def test_strict_holds_nothing_against_a_project_with_no_config_file(tmp_path: Path) -> None:
+    """Most projects have no `.warden.yaml`: that is the defaults, not a file left unread."""
+    assert _strict(tmp_path, RecordingRunner(report_texts=USABLE_REPORTS)) == 0
 
 
 def test_strict_holds_a_scanner_that_timed_out_against_the_run_whatever_it_left_behind(

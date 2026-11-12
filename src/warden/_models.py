@@ -61,6 +61,10 @@ class ResolvedConfig:
     """The scanner keys left enabled after `.warden.yaml` has been applied."""
     warnings: tuple[str, ...] = ()
     """Things worth telling the user about how the configuration was resolved."""
+    unread_config: str | None = None
+    """The config file's name when it is there, or was named with `--config`, and was not read:
+    whatever it sets, a `target_url` among it, is not in this value. `None` when the file was
+    read, or when the project has none."""
 
 
 @dataclass(slots=True, frozen=True)

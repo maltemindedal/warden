@@ -28,7 +28,7 @@ usage: warden [-h] [-u URL] [--project-root PROJECT_ROOT] [--config CONFIG]
 | `-u`, `--url`, `-Url`, `--Url` | `""` | DAST target URL. Enables the ZAP stage. Overrides `target_url` from the config file. A `target_url` in the project's own `.warden.yaml` is not used at all when `GITHUB_WORKSPACE` is set; one in a file given with `--config` still is. |
 | `--project-root` | `.` | Directory to scan. Must be an existing directory. Resolved to an absolute path; the report is written here. |
 | `--config` | `<project-root>/.warden.yaml` | Path to an alternate config file. Read through a symbolic link, which the default path is not, and like it at most 64 KiB: see [Configuration](configuration.md#the-config-file-format-is-a-yaml-subset). |
-| `--strict` | on | Accepted so that older invocations keep working. Strict is the default: the run fails (exit `3`) when a scanner that ran left no usable report, or when no scanner ran. See [Behaviour](#behaviour). |
+| `--strict` | on | Accepted so that older invocations keep working. Strict is the default: the run fails (exit `3`) when a scanner that ran left no usable report, when no scanner ran, or when a config file was there and was not read. See [Behaviour](#behaviour). |
 | `--no-strict` | off | Turn strict off: a scanner that left no usable report is only a warning, and the run can print `PASS`. When both flags are given, the last one wins. |
 | `--timeout` | none | Stop any single scanner that runs longer than this many seconds (a number greater than 0 and at most 4294967). See [Behaviour](#behaviour). |
 | `-h`, `--help` | Not applicable | Print usage and exit. |
@@ -61,7 +61,8 @@ PowerShell habits and POSIX shells. All four spellings set the same value.
   real directory, a symlink or named pipe named `security_audit.json` is replaced
   by the report, and a `.gitignore` that is a symlink or not a regular file is left
   untouched. It does not read the project's own `.warden.yaml` through a symlink
-  either: the defaults are used, with a warning.
+  either: the defaults are used, with a warning, and strict mode, the default,
+  fails the run (next item).
 - **A broken scan fails instead of passing, unless you pass `--no-strict`.** By
   default a scanner that was started (or a DAST URL that was refused) and did not
   leave a report of the right shape (a JSON object for Trivy, Semgrep and ZAP, an
@@ -74,7 +75,13 @@ PowerShell habits and POSIX shells. All four spellings set the same value.
   or pass `--no-strict`. The exit status of the scanner is not what counts, because ZAP
   exits non-zero when it has alerts and still writes its report; a clean scan is
   still a report. A run in which every scanner is disabled or skipped fails the same
-  way (`STRICT: no scanner ran, ...`). Findings win: a Critical or High finding is still
+  way (`STRICT: no scanner ran, ...`). So does a run whose config file was there and
+  was not read: a project `.warden.yaml` that is a symbolic link or not a regular
+  file, a config over 64 KiB or that cannot be read, or a `--config` path that does
+  not exist. The defaults are used, so a `target_url` in that file starts no ZAP
+  scan, and the run would otherwise pass without the scan the file asks for:
+  `STRICT: .warden.yaml was not read, so what it asks for (a DAST target_url, say) was not scanned and the scan is incomplete; to accept an incomplete scan, pass --no-strict.`
+  A project with no `.warden.yaml` is not affected. Findings win: a Critical or High finding is still
   exit `1`, and the `STRICT:` line is printed as well. The check reads its answer
   from `tools_run` in the report (see [Report format](report-format.md#summary)): it
   names each scanner that was started and is missing from it. Scanners you turned
@@ -120,7 +127,7 @@ PowerShell habits and POSIX shells. All four spellings set the same value.
 | `0` | No Critical or High findings. Printed as `PASS`. |
 | `1` | At least one Critical or High finding, printed as `FAIL`; or a path Warden owns cannot be used (`.security_reports` is a regular file, a report in it is a directory, `security_audit.json` is a directory); or a report is more JSON than Python can parse (nested past about 1,000 levels on Python 3.11 or 10,000 from 3.12, or holding an integer of more than 4,300 digits), which may hold findings, reported once every scanner has run. Both of the last two are printed as `warden: error: ...` on stderr, and neither writes `security_audit.json`. Any other path Warden cannot look up, write or delete ends the run the same way, as `warden: error: <path>: <reason>`. |
 | `2` | Invalid arguments, including a `--project-root` that is not an existing directory, and a `--project-root` or `--config` that cannot be resolved because it is a symbolic link loop (`warden: error: argument --config: cannot resolve <path>: symbolic link loop`). Nothing is scanned or written. |
-| `3` | No finding failed the build, but a scanner that ran left no usable report, or no scanner ran. Printed as `INCOMPLETE` in the summary, then a `STRICT:` line and `AUDIT INCOMPLETE!`. Never with `--no-strict`. The report is still written. |
+| `3` | No finding failed the build, but a scanner that ran left no usable report, no scanner ran, or a config file was there and was not read. Printed as `INCOMPLETE` in the summary, then a `STRICT:` line and `AUDIT INCOMPLETE!`. Never with `--no-strict`. The report is still written. |
 
 Medium, Low, Info, and Unknown findings never affect the exit code. The
 threshold is fixed at Critical and High and is not currently configurable from
