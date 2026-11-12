@@ -361,6 +361,25 @@ def test_aggregate_main_exits_zero_when_no_reports_are_present(tmp_path: Path) -
     assert exit_code == 0
 
 
+def test_an_output_path_that_cannot_be_written_is_an_error_line_not_a_traceback(
+    tmp_path: Path, capsys: CaptureFixture[str]
+) -> None:
+    """`warden-aggregate <dir> <a directory>` ended in an IsADirectoryError traceback: `warden`
+    caught the same failure and this entry point did not."""
+    _copy_fixture("gitleaks.json", tmp_path)
+    output = tmp_path / "out"
+    output.mkdir()
+
+    exit_code = main([str(tmp_path), str(output)])
+
+    captured = capsys.readouterr()
+    assert exit_code == 1
+    assert captured.err.startswith(f"warden-aggregate: error: {output}: ")
+    assert "Traceback" not in captured.err
+    assert "SCAN COMPLETE" not in captured.out
+    assert list(output.iterdir()) == []
+
+
 def test_a_report_dir_that_does_not_exist_is_a_usage_error_not_a_pass(
     tmp_path: Path, capsys: CaptureFixture[str]
 ) -> None:

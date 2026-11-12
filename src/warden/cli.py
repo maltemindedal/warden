@@ -248,6 +248,7 @@ def run_audit(options: CliOptions, *, runner: tooling.CommandRunner) -> int:
     return 0
 
 
+@out.entry_point("warden")
 def main(
     argv: list[str] | None = None,
     *,

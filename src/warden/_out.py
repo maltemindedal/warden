@@ -23,12 +23,13 @@ Imports the standard library, rich and `_fs`, and nothing else in the package.
 from __future__ import annotations
 
 import argparse
+import functools
 import json
 import sys
-from collections.abc import Sequence
+from collections.abc import Callable, Sequence
 from dataclasses import dataclass
 from pathlib import Path
-from typing import IO, TYPE_CHECKING, Literal, NoReturn, TextIO, cast
+from typing import IO, TYPE_CHECKING, Literal, NoReturn, ParamSpec, TextIO, cast
 
 from rich.console import Console
 from rich.table import Table
@@ -100,6 +101,30 @@ def error(prog: str, message: str) -> Literal[1]:
     """Write `<prog>: error: <message>` to stderr and return the exit status of a failed run."""
     say_err(f"{prog}: error: {message}")
     return 1
+
+
+_P = ParamSpec("_P")
+
+
+def entry_point(prog: str) -> Callable[[Callable[_P, int]], Callable[_P, int]]:
+    """Wrap a console script's `main`: a `ProjectIOError` nobody handled becomes
+    `<prog>: error: <path>: <reason>` on stderr and exit status 1, never a traceback.
+
+    Status 1 is the failed-audit status, so a file-system problem no caller chose to survive
+    fails the gate closed. A caller with a better message still catches the error itself.
+    """
+
+    def wrap(main: Callable[_P, int]) -> Callable[_P, int]:
+        @functools.wraps(main)
+        def guarded(*args: _P.args, **kwargs: _P.kwargs) -> int:
+            try:
+                return main(*args, **kwargs)
+            except ProjectIOError as problem:
+                return error(prog, str(problem))
+
+        return guarded
+
+    return wrap
 
 
 def _json_escape(char: str) -> str:

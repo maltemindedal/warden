@@ -80,7 +80,11 @@ without them. A write goes through a `WritableFile`, whose constructor records
 what a symlink at the name means: `owned_file` replaces it, for a name Warden
 owns, and `as_given` writes through it, for a path the user typed and for a
 report a scanner wrote. A failed write, delete or lookup raises
-`ProjectIOError`, whose text is the path and the reason.
+`ProjectIOError`, whose text is the path and the reason. `cli` catches it
+around the two steps it has a better message for. Every console script's `main`
+is wrapped in `out.entry_point`, which turns one that nobody caught into
+`<prog>: error: <path>: <reason>` and exit `1`: a file-system problem no caller
+chose to survive fails the gate, and never prints a traceback.
 `tests/test_boundaries.py` fails on `open` or a `Path` method that touches the
 disk anywhere else in the package, the `TID251` entries on the `os` functions
 that do, and ty on a `match` that leaves an outcome out.
