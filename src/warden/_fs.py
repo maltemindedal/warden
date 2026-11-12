@@ -174,8 +174,13 @@ def _opened(path: Path, flags: int, mode: Literal["rb", "ab"]) -> Generator[IO[b
         yield handle
 
 
-def read_bytes(path: Path, *, accept: Accept) -> Bytes | Problem:
+def read_bytes(path: Path, *, accept: Accept, max_bytes: int | None) -> Bytes | Problem:
     """The file's bytes, or why there are none. Never raises for what the file system does.
+
+    `max_bytes` has no default either: a file the project supplies is as large as the project
+    likes, so the caller says how much of one it will hold. A longer file is `Unreadable`, and
+    no more than `max_bytes + 1` bytes of it are read, so `/dev/zero` ends too. `None` reads
+    it all.
 
     Unless `accept` is `ANYTHING`, the kind is checked on the open descriptor, which is opened
     without blocking, so a named pipe cannot hang the run and a swap after the check changes
@@ -197,7 +202,12 @@ def read_bytes(path: Path, *, accept: Accept) -> Bytes | Problem:
             opened = os.fstat(handle.fileno()).st_mode
             if regular_only and not stat.S_ISREG(opened):
                 return NotRegular(_kind(opened))
-            return Bytes(handle.read())
+            if max_bytes is None:
+                return Bytes(handle.read())
+            data = handle.read(max_bytes + 1)
+            if len(data) > max_bytes:
+                return Unreadable(f"larger than {max_bytes} bytes")
+            return Bytes(data)
     except OSError as error:
         if error.errno == errno.ELOOP and not follow:
             return NotRegular("a symbolic link")
@@ -211,10 +221,12 @@ def _looked_up_or_none(path: Path) -> os.stat_result | None:
         return None
 
 
-def read_text(path: Path, *, accept: Accept, encoding: str) -> Text | Problem:
+def read_text(
+    path: Path, *, accept: Accept, max_bytes: int | None, encoding: str
+) -> Text | Problem:
     """`read_bytes`, decoded as `Path.read_text` decodes: a line ending is read as `\\n`. Bytes
     that are not `encoding` are `Unreadable`."""
-    outcome = read_bytes(path, accept=accept)
+    outcome = read_bytes(path, accept=accept, max_bytes=max_bytes)
     if not isinstance(outcome, Bytes):
         return outcome
     try:
@@ -253,7 +265,7 @@ def append_line(path: Path, line: str) -> AppendOutcome:
     bytes are otherwise left alone (git reads them as bytes, in whatever encoding), and the
     newline the last line lacks is added first.
     """
-    outcome = read_bytes(path, accept=Accept.REGULAR_NO_LINK)
+    outcome = read_bytes(path, accept=Accept.REGULAR_NO_LINK, max_bytes=None)
     if not isinstance(outcome, Bytes):
         return outcome
     if b"\x00" in outcome.data:

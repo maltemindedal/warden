@@ -20,6 +20,9 @@ CONFIG_FILENAME = ".warden.yaml"
 _KNOWN_KEYS = frozenset({"target_url", "url", "exclude_dirs", "tools"})
 _TOOL_WORDS = frozenset({"1", "true", "yes", "on", "0", "false", "no", "off"})
 _MAX_WARNINGS = 10
+_MAX_CONFIG_BYTES = 64 * 1024
+"""A config of a few keys is under a kilobyte. An 18 MB one took ten seconds to parse and yielded
+three million `exclude_dirs`, each of which becomes an argument on a scanner's command line."""
 
 
 def _closing_quote(line: str, start: int) -> int | None:
@@ -311,7 +314,7 @@ def resolve_config(
     # passed with `--config` is the user's own choice and is read as it always was, through a
     # link and whatever kind of file it is.
     accept = fs.Accept.ANYTHING if config_path is not None else fs.Accept.REGULAR_NO_LINK
-    match fs.read_text(path, accept=accept, encoding="utf-8-sig"):
+    match fs.read_text(path, accept=accept, max_bytes=_MAX_CONFIG_BYTES, encoding="utf-8-sig"):
         case fs.Text(text):
             try:
                 raw = _parse_with_notes(text, notes)

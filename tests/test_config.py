@@ -536,6 +536,43 @@ def test_an_absent_project_config_is_not_worth_a_warning(tmp_path: Path) -> None
     assert resolve_config(project_root=tmp_path, cli_url="").warnings == ()
 
 
+@pytest.mark.parametrize("explicit", [False, True], ids=["project", "--config"])
+def test_a_config_larger_than_64_kib_is_not_parsed_and_the_defaults_are_used(
+    tmp_path: Path, explicit: bool
+) -> None:
+    """An 18 MB `.warden.yaml` took ten seconds to parse into three million `exclude_dirs`,
+    each one an argument on a scanner's command line. A file the user passes is capped too: it
+    makes the same command line."""
+    path = tmp_path / ".warden.yaml"
+    entry = "  - a\n"
+    head = "tools:\n  gitleaks: false\nexclude_dirs:\n"
+    path.write_text(head + entry * ((64 * 1024 - len(head)) // len(entry) + 1), encoding="utf-8")
+    assert 64 * 1024 < path.stat().st_size <= 64 * 1024 + len(entry)
+
+    resolved = resolve_config(
+        project_root=tmp_path, cli_url="", config_path=path if explicit else None
+    )
+
+    assert resolved.warnings == (
+        ".warden.yaml could not be read (larger than 65536 bytes): using the defaults.",
+    )
+    assert resolved.exclude_dirs == []
+    assert all(scanner.key in resolved.enabled_tools for scanner in SCANNERS)
+
+
+def test_a_config_of_exactly_64_kib_is_still_read(tmp_path: Path) -> None:
+    text = "exclude_dirs:\n  - vendor\n"
+    (tmp_path / ".warden.yaml").write_text(
+        text + "#" * (64 * 1024 - len(text) - 1) + "\n", encoding="utf-8"
+    )
+    assert (tmp_path / ".warden.yaml").stat().st_size == 64 * 1024
+
+    resolved = resolve_config(project_root=tmp_path, cli_url="")
+
+    assert resolved.exclude_dirs == ["vendor"]
+    assert resolved.warnings == ()
+
+
 SYMLINK_WARNING = (
     ".warden.yaml is a symbolic link, which is not followed: using the defaults "
     "(pass --config to read the file it points to)."

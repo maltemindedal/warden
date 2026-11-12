@@ -27,7 +27,7 @@ usage: warden [-h] [-u URL] [--project-root PROJECT_ROOT] [--config CONFIG]
 | --- | --- | --- |
 | `-u`, `--url`, `-Url`, `--Url` | `""` | DAST target URL. Enables the ZAP stage. Overrides `target_url` from the config file. A `target_url` in the project's own `.warden.yaml` is not used at all when `GITHUB_WORKSPACE` is set; one in a file given with `--config` still is. |
 | `--project-root` | `.` | Directory to scan. Must be an existing directory. Resolved to an absolute path; the report is written here. |
-| `--config` | `<project-root>/.warden.yaml` | Path to an alternate config file. Read through a symbolic link, which the default path is not: see [Configuration](configuration.md#the-config-file-format-is-a-yaml-subset). |
+| `--config` | `<project-root>/.warden.yaml` | Path to an alternate config file. Read through a symbolic link, which the default path is not, and like it at most 64 KiB: see [Configuration](configuration.md#the-config-file-format-is-a-yaml-subset). |
 | `--strict` | on | Accepted so that older invocations keep working. Strict is the default: the run fails (exit `3`) when a scanner that ran left no usable report, or when no scanner ran. See [Behaviour](#behaviour). |
 | `--no-strict` | off | Turn strict off: a scanner that left no usable report is only a warning, and the run can print `PASS`. When both flags are given, the last one wins. |
 | `--timeout` | none | Stop any single scanner that runs longer than this many seconds (a number greater than 0 and at most 4294967). See [Behaviour](#behaviour). |

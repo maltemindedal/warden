@@ -41,7 +41,15 @@ points at a file, at nothing or at itself: the project controls it, and a link
 to any file the user can read would have that file's lines quoted in the
 warnings below. It prints
 `Warning: .warden.yaml is a symbolic link, which is not followed: using the defaults (pass --config to read the file it points to).`
-A path given with `--config` is read as given, through a symbolic link too. Warden falls back to defaults rather
+A path given with `--config` is read as given, through a symbolic link too.
+
+A config file larger than 64 KiB (65,536 bytes) is not parsed, whichever way it
+was found: Warden prints
+`Warning: .warden.yaml could not be read (larger than 65536 bytes): using the defaults.`
+and reads no further than the limit. A config of a few keys is under a kilobyte,
+and every `exclude_dirs` entry becomes an argument on a scanner's command line.
+
+Warden falls back to defaults rather
 than stopping, so a mistake never turns into an error, but it does turn into a
 **warning** for what it can see: a file that cannot be read or does not exist
 (`--config`), a project `.warden.yaml` that is a symbolic link or not a regular file, a line it does not understand (a list at the same indent as its key,
