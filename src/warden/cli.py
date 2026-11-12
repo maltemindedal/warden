@@ -84,13 +84,23 @@ def _parse_args(argv: list[str] | None = None) -> CliOptions:
 
 
 def _incomplete(
-    attempted: tuple[str, ...], tools_run: list[str], skipped_for_url: tuple[str, ...]
+    attempted: tuple[str, ...],
+    tools_run: list[str],
+    skipped_for_url: tuple[str, ...],
+    unread_config: str | None,
 ) -> str | None:
     """What strict mode holds against the run, or `None` if every scanner that was asked for ran.
 
     A scanner that was started counts as run exactly when the report lists it in `tools_run`, so
-    the gate cannot pass on a report the aggregator did not read.
+    the gate cannot pass on a report the aggregator did not read. A config file that is there and
+    was not read counts too: a `target_url` in it asks for a scanner that then never starts, and
+    without the file nothing can tell that run from one where no URL was asked for.
     """
+    if unread_config is not None:
+        return (
+            f"{unread_config} was not read, so what it asks for (a DAST target_url, say) "
+            f"was not scanned and the scan is incomplete; {_OPT_OUT}"
+        )
     missing = [*(label for label in attempted if label not in tools_run), *skipped_for_url]
     if missing:
         names = ", ".join(missing)
@@ -228,7 +238,11 @@ def run_audit(options: CliOptions, *, runner: tooling.CommandRunner) -> int:
         return out.error("warden", f"cannot read the reports or write {output_file.name}: {error}")
     except JsonLimitError as error:
         return out.error("warden", f"{error}, {aggregate.FAILS_CLOSED}")
-    incomplete = _incomplete(attempted, tools_run, skipped_for_url) if options.strict else None
+    incomplete = (
+        _incomplete(attempted, tools_run, skipped_for_url, resolved.unread_config)
+        if options.strict
+        else None
+    )
     print_summary(verdict=verdict, output_file=output_file, incomplete=incomplete is not None)
     if incomplete is not None:
         out.say()
