@@ -85,7 +85,10 @@ def _looked_up(path: Path, *, follow: bool) -> os.stat_result | None:
         return None
 
 
-def _kind(mode: int) -> str:
+Kind = Literal["a symbolic link", "a directory", "a named pipe", "a special file"]
+
+
+def _kind(mode: int) -> Kind:
     """What sits at a name, in Warden's own words: safe to print."""
     if stat.S_ISLNK(mode):
         return "a symbolic link"
@@ -101,11 +104,9 @@ class Accept(enum.Enum):
     path came from by choosing one."""
 
     REGULAR_NO_LINK = enum.auto()
-    """A regular file that is not a symlink. For a file inside the project that Warden edits:
-    `.gitignore`."""
-    REGULAR = enum.auto()
-    """A regular file, reached through symlinks or not. For a file the project supplies and
-    Warden only reads: the default `.warden.yaml`."""
+    """A regular file that is not a symlink. For a name inside the project, which the project
+    controls: `.warden.yaml`, which could otherwise point at any file the user can read and have
+    its lines quoted in a warning, and `.gitignore`, which Warden appends to."""
     ANYTHING = enum.auto()
     """Whatever is there, through symlinks, a pipe included. For a path the user typed
     (`--config`) and for a report a scanner wrote into the directory Warden owns."""
@@ -130,8 +131,9 @@ class Absent:
 class NotRegular:
     """Something has this name and `accept` rules it out. It was not read."""
 
-    kind: str
-    """`a symbolic link`, `a named pipe`, `a directory`: Warden's own words, safe to print."""
+    kind: Kind
+    """Warden's own words, safe to print. A symlink is never followed to find out more, so one
+    that dangles or loops is `a symbolic link` too."""
 
 
 @dataclass(frozen=True, slots=True)
@@ -185,8 +187,6 @@ def read_bytes(path: Path, *, accept: Accept) -> Bytes | Problem:
     except ProjectIOError as error:
         return Unlocatable(error.reason)
     if status is None:
-        if accept is Accept.REGULAR and _looked_up_or_none(path) is not None:
-            return NotRegular("a dangling symbolic link")
         return Absent()
     regular_only = accept is not Accept.ANYTHING
     if regular_only and not stat.S_ISREG(status.st_mode):

@@ -305,10 +305,12 @@ def resolve_config(
     raw: RawConfig = {}
     notes = _Notes(prefix=f"{path.name}: ")
     warnings: list[str] = []
-    # The project's own `.warden.yaml` is untrusted: a named pipe there blocks forever and
-    # `/dev/zero` never ends, so only a regular file is read. A path passed with `--config` is the
-    # user's own choice and is read as it always was, whatever kind of file it is.
-    accept = fs.Accept.ANYTHING if config_path is not None else fs.Accept.REGULAR
+    # The project's own `.warden.yaml` is untrusted: a named pipe there blocks forever,
+    # `/dev/zero` never ends, and a symlink can point at any file the user can read, whose lines
+    # the notes below would quote. So only a regular file that is not a link is read. A path
+    # passed with `--config` is the user's own choice and is read as it always was, through a
+    # link and whatever kind of file it is.
+    accept = fs.Accept.ANYTHING if config_path is not None else fs.Accept.REGULAR_NO_LINK
     match fs.read_text(path, accept=accept, encoding="utf-8-sig"):
         case fs.Text(text):
             try:
@@ -320,6 +322,11 @@ def resolve_config(
         case fs.Absent():
             if config_path is not None:
                 warnings.append(f"--config {shown(str(path))} does not exist: using the defaults.")
+        case fs.NotRegular("a symbolic link"):
+            warnings.append(
+                f"{path.name} is a symbolic link, which is not followed: using the defaults "
+                "(pass --config to read the file it points to)."
+            )
         case fs.NotRegular():
             warnings.append(f"{path.name} is not a regular file: using the defaults.")
         case fs.Unlocatable(reason) | fs.Unreadable(reason):

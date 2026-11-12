@@ -536,6 +536,65 @@ def test_an_absent_project_config_is_not_worth_a_warning(tmp_path: Path) -> None
     assert resolve_config(project_root=tmp_path, cli_url="").warnings == ()
 
 
+SYMLINK_WARNING = (
+    ".warden.yaml is a symbolic link, which is not followed: using the defaults "
+    "(pass --config to read the file it points to)."
+)
+
+
+def test_a_symlinked_project_config_is_refused_and_none_of_its_target_is_quoted(
+    tmp_path: Path,
+) -> None:
+    """A project could ship `.warden.yaml` as a link to any file the user can read. Its lines
+    are not `key: value`, so each came back quoted in a warning: a pull request printed
+    `aws_secret_access_key = AKIAEXAMPLE` into the CI log."""
+    secrets = tmp_path / "credentials"
+    secrets.write_text("[default]\naws_secret_access_key = AKIAEXAMPLE\n", encoding="utf-8")
+    project = tmp_path / "project"
+    project.mkdir()
+    symlink_or_skip(project / ".warden.yaml", secrets)
+
+    resolved = resolve_config(project_root=project, cli_url="")
+
+    assert resolved.warnings == (SYMLINK_WARNING,)
+    assert "AKIAEXAMPLE" not in "".join(resolved.warnings)
+
+
+def test_a_symlinked_project_config_does_not_configure_the_scan(tmp_path: Path) -> None:
+    """Refused means not read at all: the link's target cannot switch a scanner off either."""
+    elsewhere = tmp_path / "elsewhere.yaml"
+    elsewhere.write_text("tools:\n  gitleaks: false\nexclude_dirs:\n  - src\n", encoding="utf-8")
+    project = tmp_path / "project"
+    project.mkdir()
+    symlink_or_skip(project / ".warden.yaml", elsewhere)
+
+    resolved = resolve_config(project_root=project, cli_url="")
+
+    assert all(scanner.key in resolved.enabled_tools for scanner in SCANNERS)
+    assert resolved.exclude_dirs == []
+
+
+def test_a_config_path_the_user_passes_is_still_read_through_a_symlink(tmp_path: Path) -> None:
+    """`--config` is the user's own choice of file, so a link there is followed as before."""
+    real = tmp_path / "real.yaml"
+    real.write_text("exclude_dirs:\n  - vendor\n", encoding="utf-8")
+    link = tmp_path / "link.yaml"
+    symlink_or_skip(link, real)
+
+    resolved = resolve_config(project_root=tmp_path, cli_url="", config_path=link)
+
+    assert resolved.exclude_dirs == ["vendor"]
+    assert resolved.warnings == ()
+
+
+def test_a_project_config_that_is_a_dangling_symlink_is_warned_about(tmp_path: Path) -> None:
+    """A link that points nowhere is a config the user wrote and Warden ignores. Reading it as
+    no config at all would hide that."""
+    symlink_or_skip(tmp_path / ".warden.yaml", tmp_path / "nowhere")
+
+    assert resolve_config(project_root=tmp_path, cli_url="").warnings == (SYMLINK_WARNING,)
+
+
 @pytest.mark.skipif(not hasattr(os, "mkfifo"), reason="needs named pipes")
 def test_a_project_config_that_is_not_a_regular_file_is_warned_about(tmp_path: Path) -> None:
     os.mkfifo(tmp_path / ".warden.yaml")

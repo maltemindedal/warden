@@ -35,11 +35,16 @@ deeper than one level, inline `[a, b]` or `{a: b}` collections, or documents
 with `---` separators. Unrecognised top-level keys are parsed and then ignored.
 
 A file that cannot be read or parsed is treated as empty, and so is the
-project's own `.warden.yaml` when it is not a regular file (a named pipe, say).
-A path given with `--config` is read as given. Warden falls back to defaults rather
+project's own `.warden.yaml` when it is not a regular file (a named pipe, say)
+or is a symbolic link. Warden does not follow a link at that name, whether it
+points at a file, at nothing or at itself: the project controls it, and a link
+to any file the user can read would have that file's lines quoted in the
+warnings below. It prints
+`Warning: .warden.yaml is a symbolic link, which is not followed: using the defaults (pass --config to read the file it points to).`
+A path given with `--config` is read as given, through a symbolic link too. Warden falls back to defaults rather
 than stopping, so a mistake never turns into an error, but it does turn into a
 **warning** for what it can see: a file that cannot be read or does not exist
-(`--config`), a line it does not understand (a list at the same indent as its key,
+(`--config`), a project `.warden.yaml` that is a symbolic link or not a regular file, a line it does not understand (a list at the same indent as its key,
 `---`, an indented line under nothing), an unknown top-level key or tool name, a
 `tools:` value that is not true or false (`ture` counts as false, so the scanner is
 disabled), and a `target_url`, `exclude_dirs` or `tools` of the wrong shape. Every

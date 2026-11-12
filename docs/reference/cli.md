@@ -27,7 +27,7 @@ usage: warden [-h] [-u URL] [--project-root PROJECT_ROOT] [--config CONFIG]
 | --- | --- | --- |
 | `-u`, `--url`, `-Url`, `--Url` | `""` | DAST target URL. Enables the ZAP stage. Overrides `target_url` from the config file. A `target_url` in the project's own `.warden.yaml` is not used at all when `GITHUB_WORKSPACE` is set; one in a file given with `--config` still is. |
 | `--project-root` | `.` | Directory to scan. Must be an existing directory. Resolved to an absolute path; the report is written here. |
-| `--config` | `<project-root>/.warden.yaml` | Path to an alternate config file. |
+| `--config` | `<project-root>/.warden.yaml` | Path to an alternate config file. Read through a symbolic link, which the default path is not: see [Configuration](configuration.md#the-config-file-format-is-a-yaml-subset). |
 | `--strict` | on | Accepted so that older invocations keep working. Strict is the default: the run fails (exit `3`) when a scanner that ran left no usable report, or when no scanner ran. See [Behaviour](#behaviour). |
 | `--no-strict` | off | Turn strict off: a scanner that left no usable report is only a warning, and the run can print `PASS`. When both flags are given, the last one wins. |
 | `--timeout` | none | Stop any single scanner that runs longer than this many seconds (a number greater than 0 and at most 4294967). See [Behaviour](#behaviour). |
@@ -60,7 +60,8 @@ PowerShell habits and POSIX shells. All four spellings set the same value.
   it scans is not trusted. A symlink named `.security_reports` is replaced by a
   real directory, a symlink or named pipe named `security_audit.json` is replaced
   by the report, and a `.gitignore` that is a symlink or not a regular file is left
-  untouched.
+  untouched. It does not read the project's own `.warden.yaml` through a symlink
+  either: the defaults are used, with a warning.
 - **A broken scan fails instead of passing, unless you pass `--no-strict`.** By
   default a scanner that was started (or a DAST URL that was refused) and did not
   leave a report of the right shape (a JSON object for Trivy, Semgrep and ZAP, an
@@ -160,7 +161,7 @@ usage: warden-config [-h] [--cli-url CLI_URL] [--config CONFIG]
 | --- | --- | --- |
 | `project_root` | required | Directory whose config to resolve. |
 | `--cli-url` | `""` | Simulate a `--url` flag, to check precedence. |
-| `--config` | `<project_root>/.warden.yaml` | Alternate config path. |
+| `--config` | `<project_root>/.warden.yaml` | Alternate config path. Read through a symbolic link, which the default path is not. |
 
 Exits `0`, or `2` for invalid arguments, including a `project_root` or `--config`
 that is a symbolic link loop.
