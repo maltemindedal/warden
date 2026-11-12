@@ -3,6 +3,7 @@ raises `ProjectIOError` alone."""
 
 from __future__ import annotations
 
+import errno
 import os
 import subprocess
 import sys
@@ -65,7 +66,9 @@ def test_a_symlink_is_followed_only_where_the_caller_accepts_one(tmp_path: Path)
     refused = fs.read_bytes(link, accept=fs.Accept.REGULAR_NO_LINK, max_bytes=None)
 
     assert refused == fs.NotRegular("a symbolic link")
-    assert fs.read_bytes(link, accept=fs.Accept.ANYTHING, max_bytes=None) == fs.Bytes(b"secret")
+    assert fs.read_bytes(
+        link, accept=fs.Accept.USER_GIVEN_OR_WARDEN_OWNED, max_bytes=None
+    ) == fs.Bytes(b"secret")
 
 
 def test_a_dangling_symlink_is_not_mistaken_for_no_file_at_a_project_path(tmp_path: Path) -> None:
@@ -77,7 +80,10 @@ def test_a_dangling_symlink_is_not_mistaken_for_no_file_at_a_project_path(tmp_pa
     assert fs.read_bytes(link, accept=fs.Accept.REGULAR_NO_LINK, max_bytes=None) == fs.NotRegular(
         "a symbolic link"
     )
-    assert fs.read_bytes(link, accept=fs.Accept.ANYTHING, max_bytes=None) == fs.Absent()
+    assert (
+        fs.read_bytes(link, accept=fs.Accept.USER_GIVEN_OR_WARDEN_OWNED, max_bytes=None)
+        == fs.Absent()
+    )
 
 
 @needs_named_pipes
@@ -107,7 +113,7 @@ def test_a_directory_is_not_regular_or_is_unreadable_and_never_raises(tmp_path: 
     refused = fs.read_bytes(tmp_path, accept=fs.Accept.REGULAR_NO_LINK, max_bytes=None)
 
     assert refused == fs.NotRegular("a directory")
-    anything = fs.read_bytes(tmp_path, accept=fs.Accept.ANYTHING, max_bytes=None)
+    anything = fs.read_bytes(tmp_path, accept=fs.Accept.USER_GIVEN_OR_WARDEN_OWNED, max_bytes=None)
 
     assert isinstance(anything, fs.Unreadable)
     assert anything.reason != ""
@@ -139,7 +145,9 @@ def test_a_file_longer_than_the_caller_will_hold_is_unreadable_and_read_no_furth
     assert at_the_limit == fs.Bytes(b"a" * 11)
     assert over_it == fs.Unreadable("larger than 10 bytes")
     if Path("/dev/zero").exists():
-        endless = fs.read_bytes(Path("/dev/zero"), accept=fs.Accept.ANYTHING, max_bytes=10)
+        endless = fs.read_bytes(
+            Path("/dev/zero"), accept=fs.Accept.USER_GIVEN_OR_WARDEN_OWNED, max_bytes=10
+        )
         assert endless == fs.Unreadable("larger than 10 bytes")
 
 
@@ -252,6 +260,62 @@ def test_an_owned_file_replaces_a_named_pipe_instead_of_blocking_on_it(tmp_path:
     assert (tmp_path / "security_audit.json").read_text(encoding="utf-8") == "{}"
 
 
+def test_make_way_removes_a_symlink_without_touching_its_target(tmp_path: Path) -> None:
+    """A project can ship `security_audit.json -> ~/.bashrc`; the report must not land there."""
+    victim = tmp_path / "victim.txt"
+    victim.write_text("keep me", encoding="utf-8")
+    output_file = tmp_path / "security_audit.json"
+    symlink_or_skip(output_file, victim)
+
+    fs.owned_file(output_file).make_way()
+
+    assert not output_file.exists() and not output_file.is_symlink()
+    assert victim.read_text(encoding="utf-8") == "keep me"
+
+
+def test_make_way_removes_a_dangling_symlink_without_creating_its_target(
+    tmp_path: Path,
+) -> None:
+    target = tmp_path / "does-not-exist.txt"
+    output_file = tmp_path / "security_audit.json"
+    symlink_or_skip(output_file, target)
+
+    fs.owned_file(output_file).make_way()
+
+    assert not output_file.is_symlink()
+    assert not target.exists()
+
+
+@needs_named_pipes
+def test_make_way_removes_a_named_pipe(tmp_path: Path) -> None:
+    """Opening a pipe for writing blocks forever, so the report could never be written."""
+    output_file = tmp_path / "security_audit.json"
+    os.mkfifo(output_file)
+
+    fs.owned_file(output_file).make_way()
+
+    assert not output_file.exists()
+
+
+def test_make_way_leaves_a_regular_file_and_a_missing_path_alone(tmp_path: Path) -> None:
+    existing = tmp_path / "security_audit.json"
+    existing.write_text("old report", encoding="utf-8")
+
+    fs.owned_file(existing).make_way()
+    fs.owned_file(tmp_path / "missing.json").make_way()
+
+    assert existing.read_text(encoding="utf-8") == "old report"
+
+
+def test_make_way_fails_on_a_name_it_cannot_look_up_instead_of_leaving_it_to_the_write(
+    tmp_path: Path,
+) -> None:
+    """A failed lookup was read as "nothing to clear", and the error came back only from the
+    write, after every scanner had run."""
+    with pytest.raises(fs.ProjectIOError):
+        fs.owned_file(tmp_path / ("a" * 300)).make_way()
+
+
 def test_write_makes_missing_parents_and_escapes_a_lone_surrogate(tmp_path: Path) -> None:
     """A lone surrogate has no UTF-8 encoding: writing one as is raised after the file was
     opened and left it empty (bf9bbd8)."""
@@ -340,13 +404,23 @@ def test_a_symlink_loop_never_escapes_as_runtime_error(tmp_path: Path) -> None:
         assert error.reason == "symbolic link loop"
 
     assert not fs.is_dir(loop)
-    assert fs.read_bytes(loop, accept=fs.Accept.ANYTHING, max_bytes=None) == fs.Absent()
+    assert (
+        fs.read_bytes(loop, accept=fs.Accept.USER_GIVEN_OR_WARDEN_OWNED, max_bytes=None)
+        == fs.Absent()
+    )
     assert fs.read_bytes(loop, accept=fs.Accept.REGULAR_NO_LINK, max_bytes=None) == fs.NotRegular(
         "a symbolic link"
     )
 
 
-def test_is_dir_is_false_for_a_path_it_cannot_look_up(tmp_path: Path) -> None:
+def test_is_dir_fails_rather_than_call_a_path_it_cannot_look_up_not_a_directory(
+    tmp_path: Path,
+) -> None:
+    """`is_dir` answered `False` when the lookup failed, so `--project-root` on a directory that
+    could not be looked up (EACCES, a name too long) was reported as "not an existing directory".
+    `present()` already refused to conclude absence from an error."""
     assert fs.is_dir(tmp_path)
     assert not fs.is_dir(tmp_path / "missing")
-    assert not fs.is_dir(tmp_path / ("a" * 300))
+    with pytest.raises(fs.ProjectIOError) as raised:
+        fs.is_dir(tmp_path / ("a" * 300))
+    assert raised.value.reason == os.strerror(errno.ENAMETOOLONG)

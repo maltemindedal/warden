@@ -8,7 +8,6 @@ from typing import LiteralString, assert_never, cast
 from . import _fs as fs
 from . import _out as out
 from ._models import CliOptions, ResolvedConfig
-from ._out import shown
 from ._scanners import SCANNERS
 
 ScalarValue = str | int | bool
@@ -17,7 +16,7 @@ RawConfig = dict[str, RawConfigValue]
 
 
 CONFIG_FILENAME = ".warden.yaml"
-_KNOWN_KEYS = frozenset({"target_url", "url", "exclude_dirs", "tools"})
+KNOWN_KEYS = frozenset({"target_url", "url", "exclude_dirs", "tools"})
 _TOOL_WORDS = frozenset({"1", "true", "yes", "on", "0", "false", "no", "off"})
 _MAX_WARNINGS = 10
 _MAX_CONFIG_BYTES = 64 * 1024
@@ -179,9 +178,9 @@ class _Notes:
         self._omitted = 0
 
     def add(self, message: LiteralString, *args: str | int) -> None:
-        """Note `message`: a `str` fills its `%s` quoted by `shown`, an `int` fills its `%d`."""
+        """Note `message`: a `str` fills its `%s` quoted by `out.shown`, an `int` fills its `%d`."""
         if len(self._kept) < _MAX_WARNINGS:
-            filled = tuple(shown(arg, 60) if isinstance(arg, str) else arg for arg in args)
+            filled = tuple(out.shown(arg, 60) if isinstance(arg, str) else arg for arg in args)
             self._kept.append(self._prefix + message % filled)
         else:
             self._omitted += 1
@@ -222,7 +221,7 @@ def _parse_with_notes(text: str, notes: _Notes) -> RawConfig:
         _parse_nested_line(config, context, stripped)
 
     for key in config:
-        if key not in _KNOWN_KEYS:
+        if key not in KNOWN_KEYS:
             notes.add("unknown key %s is ignored", key)
     return config
 
@@ -313,7 +312,8 @@ def resolve_config(
     # the notes below would quote. So only a regular file that is not a link is read. A path
     # passed with `--config` is the user's own choice and is read as it always was, through a
     # link and whatever kind of file it is.
-    accept = fs.Accept.ANYTHING if config_path is not None else fs.Accept.REGULAR_NO_LINK
+    given = config_path is not None
+    accept = fs.Accept.USER_GIVEN_OR_WARDEN_OWNED if given else fs.Accept.REGULAR_NO_LINK
     match fs.read_text(path, accept=accept, max_bytes=_MAX_CONFIG_BYTES, encoding="utf-8-sig"):
         case fs.Text(text):
             try:
@@ -324,7 +324,7 @@ def resolve_config(
                 not_read = f"{path.name} could not be read ({error}): using the defaults."
         case fs.Absent():
             if config_path is not None:
-                not_read = f"--config {shown(str(path))} does not exist: using the defaults."
+                not_read = f"--config {out.shown(str(path))} does not exist: using the defaults."
         case fs.NotRegular("a symbolic link"):
             not_read = (
                 f"{path.name} is a symbolic link, which is not followed: using the defaults "

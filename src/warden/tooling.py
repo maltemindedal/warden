@@ -80,16 +80,6 @@ def prepare_report_dir(project_root: str | Path) -> Path:
     return report_dir
 
 
-def clear_output_file(path: Path) -> None:
-    """Remove a symlink or named pipe sitting where the report will be written.
-
-    A project can ship `security_audit.json` as a symlink, and writing then follows it to a file
-    elsewhere, or as a named pipe, and opening one for writing blocks forever. Warden owns the
-    name, so either is replaced by the regular file it writes. Anything else is left alone.
-    """
-    fs.owned_file(path).make_way()
-
-
 _STOP_GRACE_SECONDS = 10
 _OWN_SESSION = os.name == "posix"
 """A scanner is started as the leader of its own process group, so that the workers it starts

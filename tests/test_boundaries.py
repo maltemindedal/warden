@@ -14,6 +14,7 @@ from __future__ import annotations
 
 import ast
 import functools
+import inspect
 import json
 import subprocess
 import sys
@@ -24,6 +25,8 @@ from typing import cast
 
 import pytest
 
+from warden import _fs as fs
+
 ROOT = Path(__file__).parents[1]
 SRC = ROOT / "src" / "warden"
 
@@ -32,9 +35,14 @@ _EXIT = (
     "return the status from main(), and say why with warden._out.error(), which escapes project "
     "text, writes `<prog>: error: <message>` to stderr and returns 1"
 )
+_SAFE_READ = (
+    "warden._fs.read_text(path, accept=fs.Accept.REGULAR_NO_LINK, "
+    "max_bytes=<the most you will hold>, encoding=...)"
+)
+"""The read for a file the project supplies: no symlink, no pipe, and a cap."""
 _READ = (
-    "use warden._fs.read_text() or read_bytes(), which return Absent, NotRegular, Unlocatable "
-    "or Unreadable instead of raising, so a project file cannot end the run in a traceback"
+    f"use {_SAFE_READ} or read_bytes(), which return Absent, NotRegular, Unlocatable or "
+    "Unreadable instead of raising, so a project file cannot end the run in a traceback"
 )
 _WRITE = (
     "get a warden._fs.WritableFile from owned_file() or as_given() and call write() or remove(), "
@@ -250,23 +258,26 @@ def test_the_check_reports_an_unguarded_project_file_call_and_names_the_replacem
         '    path.write_text(text, encoding="utf-8")\n'
         'with open(path, "a") as handle:\n'
         "    pass\n"
-        "fs.read_text(path, accept=fs.Accept.ANYTHING, encoding='utf-8')\n"
+        "fs.read_text(path, accept=fs.Accept.REGULAR_NO_LINK, max_bytes=65536, encoding='utf-8')\n"
         "fs.is_dir(path)\n",
     )
 
-    assert read.startswith("bad.py:2: .read_text: use warden._fs.read_text() or read_bytes()")
+    assert read.startswith("bad.py:2: .read_text: use warden._fs.read_text(path, accept=")
     assert lookup.startswith("bad.py:3: .exists: use warden._fs.resolved(), is_dir()")
     assert write.startswith("bad.py:4: .write_text: get a warden._fs.WritableFile")
-    assert builtin.startswith("bad.py:5: open: use warden._fs.read_text()")
+    assert builtin.startswith("bad.py:5: open: use warden._fs.read_text(path, accept=")
 
 
 @pytest.mark.parametrize(
     ("line", "reported"),
     [
-        ("texts = list(map(Path.read_text, paths))", ".read_text: use warden._fs.read_text()"),
+        ("texts = list(map(Path.read_text, paths))", ".read_text: use warden._fs.read_text(path"),
         ("ok = sorted(paths, key=Path.exists)", ".exists: use warden._fs.resolved()"),
-        ("reader = path.read_text", ".read_text: use warden._fs.read_text()"),
-        ('getattr(path, "read_text")()', 'getattr(..., "read_text"): use warden._fs.read_text()'),
+        ("reader = path.read_text", ".read_text: use warden._fs.read_text(path"),
+        (
+            'getattr(path, "read_text")()',
+            'getattr(..., "read_text"): use warden._fs.read_text(path',
+        ),
         ("here = Path.cwd()", ".cwd: use warden._fs.resolved()"),
         ("home = Path.home()", ".home: use warden._fs.resolved()"),
         ("tmp.replace(target)", ".replace: get a warden._fs.WritableFile"),
@@ -327,6 +338,25 @@ def test_the_fs_alias_only_passes_what_fs_defines_and_cannot_be_bound_again(
     assert not_exported.startswith("bad.py:5: .exists: use warden._fs.resolved()")
     assert parameter.startswith("bad.py:6: `out` is bound again: `out` is the name warden._out is")
     assert loop.startswith("bad.py:7: `fs` is bound again")
+
+
+def test_the_read_the_messages_suggest_is_the_safe_one_and_would_run() -> None:
+    """The message suggested `read_text()` bare, and the lines nearest to copy passed
+    `accept=fs.Accept.ANYTHING, max_bytes=None`: a read through a symlink, of any size. The
+    suggestion now spells out the call for a file the project supplies, with every argument
+    `read_text` requires."""
+    required = [
+        name
+        for name, parameter in inspect.signature(fs.read_text).parameters.items()
+        if parameter.kind is parameter.KEYWORD_ONLY and parameter.default is parameter.empty
+    ]
+
+    read_rows = [message for message in _banned_api().values() if "read_text" in message]
+
+    assert required == ["accept", "max_bytes", "encoding"]
+    assert all(f"{name}=" in _SAFE_READ for name in required)
+    assert f"accept=fs.Accept.{fs.Accept.REGULAR_NO_LINK.name}," in _SAFE_READ
+    assert len(read_rows) == 7 and all(_SAFE_READ in message for message in read_rows)
 
 
 def _banned_api() -> dict[str, str]:

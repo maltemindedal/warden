@@ -116,9 +116,9 @@ def test_the_configuration_reference_has_a_section_or_alias_for_each_config_key(
     text = _text(CONFIG_DOC)
     documented = set(re.findall(r"^### `(\w+)`", text, flags=re.MULTILINE))
     documented |= set(re.findall(r"^\| Alias \| `(\w+)` \|", text, flags=re.MULTILINE))
-    assert documented == config._KNOWN_KEYS, (
-        f"{CONFIG_DOC}: add a `### `key`` section for {sorted(config._KNOWN_KEYS - documented)}, "
-        f"remove the one for {sorted(documented - config._KNOWN_KEYS)}."
+    assert documented == config.KNOWN_KEYS, (
+        f"{CONFIG_DOC}: add a `### `key`` section for {sorted(config.KNOWN_KEYS - documented)}, "
+        f"remove the one for {sorted(documented - config.KNOWN_KEYS)}."
     )
 
 

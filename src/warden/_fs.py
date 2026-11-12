@@ -108,9 +108,10 @@ class Accept(enum.Enum):
     """A regular file that is not a symlink. For a name inside the project, which the project
     controls: `.warden.yaml`, which could otherwise point at any file the user can read and have
     its lines quoted in a warning, and `.gitignore`, which Warden appends to."""
-    ANYTHING = enum.auto()
-    """Whatever is there, through symlinks, a pipe included. For a path the user typed
-    (`--config`) and for a report a scanner wrote into the directory Warden owns."""
+    USER_GIVEN_OR_WARDEN_OWNED = enum.auto()
+    """Whatever is there, through symlinks, a pipe included. Only for a path the user typed
+    (`--config`) and for a report a scanner wrote into the directory Warden owns. Never for a
+    name the project chose: that is `REGULAR_NO_LINK`, with a `max_bytes`."""
 
 
 @dataclass(frozen=True, slots=True)
@@ -183,9 +184,9 @@ def read_bytes(path: Path, *, accept: Accept, max_bytes: int | None) -> Bytes | 
     no more than `max_bytes + 1` bytes of it are read, so `/dev/zero` ends too. `None` reads
     it all.
 
-    Unless `accept` is `ANYTHING`, the kind is checked on the open descriptor, which is opened
-    without blocking, so a named pipe cannot hang the run and a swap after the check changes
-    nothing.
+    Unless `accept` is `USER_GIVEN_OR_WARDEN_OWNED`, the kind is checked on the open descriptor,
+    which is opened without blocking, so a named pipe cannot hang the run and a swap after the
+    check changes nothing.
     """
     follow = accept is not Accept.REGULAR_NO_LINK
     try:
@@ -194,7 +195,7 @@ def read_bytes(path: Path, *, accept: Accept, max_bytes: int | None) -> Bytes | 
         return Unlocatable(error.reason)
     if status is None:
         return Absent()
-    regular_only = accept is not Accept.ANYTHING
+    regular_only = accept is not Accept.USER_GIVEN_OR_WARDEN_OWNED
     if regular_only and not stat.S_ISREG(status.st_mode):
         return NotRegular(_kind(status.st_mode))
     flags = os.O_RDONLY | (0 if follow else _NO_FOLLOW) | (_NO_BLOCK if regular_only else 0)
@@ -213,13 +214,6 @@ def read_bytes(path: Path, *, accept: Accept, max_bytes: int | None) -> Bytes | 
         if error.errno == errno.ELOOP and not follow:
             return NotRegular("a symbolic link")
         return Unreadable(_reason(error))
-
-
-def _looked_up_or_none(path: Path) -> os.stat_result | None:
-    try:
-        return _looked_up(path, follow=False)
-    except ProjectIOError:
-        return None
 
 
 def read_text(
@@ -315,11 +309,10 @@ def resolved(path: str | Path) -> Path:
 
 
 def is_dir(path: Path) -> bool:
-    """Whether `path` is a directory, following links. A lookup that fails is `False`."""
-    try:
-        status = _looked_up(path, follow=True)
-    except ProjectIOError:
-        return False
+    """Whether `path` is a directory, following links. Raises `ProjectIOError` when the lookup
+    itself fails, as `WritableFile.present` does: "not a directory" is never concluded from an
+    error."""
+    status = _looked_up(path, follow=True)
     return status is not None and stat.S_ISDIR(status.st_mode)
 
 
@@ -359,7 +352,7 @@ class WritableFile:
         this first, so calling it early only moves the failure earlier."""
         if self._on_link is _OnLink.FOLLOW:
             return
-        status = _looked_up_or_none(self.path)
+        status = _looked_up(self.path, follow=False)
         if status is not None and (stat.S_ISLNK(status.st_mode) or stat.S_ISFIFO(status.st_mode)):
             with _contained(self.path):
                 self.path.unlink()

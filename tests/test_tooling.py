@@ -769,53 +769,6 @@ def test_a_symlinked_gitignore_is_not_appended_to(tmp_path: Path) -> None:
     assert victim.read_text(encoding="utf-8") == "keep me\n"
 
 
-def test_clear_output_file_removes_a_symlink_without_touching_its_target(tmp_path: Path) -> None:
-    """A project can ship `security_audit.json -> ~/.bashrc`; the report must not land there."""
-    victim = tmp_path / "victim.txt"
-    victim.write_text("keep me", encoding="utf-8")
-    output_file = tmp_path / "security_audit.json"
-    symlink_or_skip(output_file, victim)
-
-    tooling.clear_output_file(output_file)
-
-    assert not output_file.exists() and not output_file.is_symlink()
-    assert victim.read_text(encoding="utf-8") == "keep me"
-
-
-def test_clear_output_file_removes_a_dangling_symlink_without_creating_its_target(
-    tmp_path: Path,
-) -> None:
-    target = tmp_path / "does-not-exist.txt"
-    output_file = tmp_path / "security_audit.json"
-    symlink_or_skip(output_file, target)
-
-    tooling.clear_output_file(output_file)
-
-    assert not output_file.is_symlink()
-    assert not target.exists()
-
-
-@pytest.mark.skipif(not hasattr(os, "mkfifo"), reason="needs named pipes")
-def test_clear_output_file_removes_a_named_pipe(tmp_path: Path) -> None:
-    """Opening a pipe for writing blocks forever, so the report could never be written."""
-    output_file = tmp_path / "security_audit.json"
-    os.mkfifo(output_file)
-
-    tooling.clear_output_file(output_file)
-
-    assert not output_file.exists()
-
-
-def test_clear_output_file_leaves_a_regular_file_and_a_missing_path_alone(tmp_path: Path) -> None:
-    existing = tmp_path / "security_audit.json"
-    existing.write_text("old report", encoding="utf-8")
-
-    tooling.clear_output_file(existing)
-    tooling.clear_output_file(tmp_path / "missing.json")
-
-    assert existing.read_text(encoding="utf-8") == "old report"
-
-
 @pytest.mark.skipif(not hasattr(os, "mkfifo"), reason="needs named pipes")
 def test_a_gitignore_that_is_a_named_pipe_is_left_alone_without_being_read(
     tmp_path: Path,
