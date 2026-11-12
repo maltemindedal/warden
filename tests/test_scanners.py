@@ -227,7 +227,9 @@ def test_a_hostile_url_is_rewritten_in_linear_time() -> None:
         "http://user:pw@host:8080/path?q=1#frag",
         "http://[::1]:3000/",
         "http://127.0.0.1",
+        "https://example.com/" + "a" * (2048 - len("https://example.com/")),
     ],
+    ids=lambda url: url[:40],
 )
 def test_an_http_url_with_a_host_is_a_usable_dast_target(url: str) -> None:
     assert url_problem(url) is None
@@ -257,7 +259,11 @@ def test_an_http_url_with_a_host_is_a_usable_dast_target(url: str) -> None:
         ("http://example.com/\u009b", "contains control or non-printable characters"),
         ("http://example.com/\ud800", "contains control or non-printable characters"),
         ("http://exa\u00a0mple.com", "contains control or non-printable characters"),
+        # Nothing bounded the value, which is printed and handed to ZAP on its command line.
+        ("https://example.com/" + "a" * 2029, "is longer than 2048 characters"),
+        ("https://example.com/" + "\x1b" * 5000, "is longer than 2048 characters"),
     ],
+    ids=lambda value: ascii(value[:40]),
 )
 def test_a_url_that_is_not_http_with_a_host_or_holds_control_characters_is_refused(
     url: str, problem: str
@@ -271,8 +277,10 @@ def test_a_hostile_url_is_checked_in_linear_time() -> None:
 
     started = time.perf_counter()
     result = url_problem(hostile)
+    at_the_limit = url_problem(hostile[:2048])
 
-    assert result == "it has no host"
+    assert result == "it is longer than 2048 characters"
+    assert at_the_limit == "it has no host"
     assert time.perf_counter() - started < 5
 
 

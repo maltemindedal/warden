@@ -258,6 +258,7 @@ def test_a_directory_where_the_report_goes_is_a_clear_error_after_the_scans_ran(
         "HTTP://example.com",
         "http://example.com/\x1b[31mred",
         "http://example.com/\u202egpj.exe",
+        pytest.param("https://example.com/" + "a" * 2029, id="2049-characters"),
     ],
 )
 def test_an_unusable_dast_url_is_a_warning_and_zap_is_skipped(
@@ -278,6 +279,22 @@ def test_an_unusable_dast_url_is_a_warning_and_zap_is_skipped(
     assert "[4/4] Skipping ZAP" in output
     assert "\x1b" not in output
     assert "\u202e" not in output
+
+
+def test_a_dast_url_past_the_length_limit_is_refused_and_quoted_cut_short(
+    tmp_path: Path, capsys: CaptureFixture[str]
+) -> None:
+    """A URL of any length was printed whole on the `DAST URL:` line and passed to ZAP."""
+    runner = RecordingRunner(report_text="{}")
+    url = "https://example.com/" + "a" * 4980
+
+    exit_code = cli.main(["--project-root", str(tmp_path), "--url", url], runner=runner)
+
+    output = capsys.readouterr().out
+    assert exit_code == cli.EXIT_INCOMPLETE
+    assert not [command for command in runner.commands if url in command.args]
+    assert "is not usable (it is longer than 2048 characters): skipping ZAP." in output
+    assert max(len(line) for line in output.splitlines()) < 300
 
 
 @pytest.mark.parametrize(

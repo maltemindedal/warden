@@ -76,8 +76,9 @@ dropped with a warning; the other entries and every scanner are unaffected. Veri
 | Alias | `url` |
 
 DAST target for OWASP ZAP. When empty, ZAP is skipped. It must start with
-lowercase `http://` or `https://`, have a host and hold only printable characters;
-anything else is reported with a warning and ZAP is skipped.
+lowercase `http://` or `https://`, have a host, hold only printable characters
+and be at most 2048 characters long; anything else is reported with a warning
+and ZAP is skipped.
 
 `url` is accepted as an alias. If both are present, `target_url` wins.
 

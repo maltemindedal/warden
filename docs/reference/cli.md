@@ -41,10 +41,10 @@ PowerShell habits and POSIX shells. All four spellings set the same value.
 - **A URL alone is not enough to run ZAP.** If `tools.zap` is `false` in the
   config, the resolved URL is discarded and ZAP is skipped, even when `--url` is
   passed explicitly. See [Configuration](configuration.md#interaction-between-target_url-and-toolszap).
-- **The URL must start with lowercase `http://` or `https://`, have a host, and hold
-  only printable characters** (ZAP tests the prefix literally). Anything else
-  (`localhost:3000` without a scheme, `HTTP://...`, `ftp://...`, an escape sequence in
-  the value) prints `Warning: the DAST URL ... is not usable` and skips
+- **The URL must start with lowercase `http://` or `https://`, have a host, hold
+  only printable characters, and be at most 2048 characters long** (ZAP tests the
+  prefix literally). Anything else (`localhost:3000` without a scheme, `HTTP://...`,
+  `ftp://...`, an escape sequence in the value, a longer URL) prints `Warning: the DAST URL ... is not usable` and skips
   ZAP; the other scanners still run. Strict mode, the default, counts a refused URL
   as ZAP failing to run (exit `3`); with `--no-strict` the exit code is unaffected. ZAP itself
   rejects such a target, so nothing that worked is lost.
