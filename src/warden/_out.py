@@ -15,7 +15,7 @@ caller passed and whichever entry point is running:
 with `shown` passes through unchanged. Callers therefore never ask "is this string safe?": they
 build a line the obvious way, with an f-string, and hand it over.
 
-Imports the standard library and rich, and nothing else in the package.
+Imports the standard library, rich and `_fs`, and nothing else in the package.
 `tests/test_boundaries.py` and ruff's `TID251` keep `print`, `sys.stdout`, `sys.stderr`, rich and
 `argparse.ArgumentParser` out of every other module.
 """
@@ -27,11 +27,14 @@ import json
 import sys
 from collections.abc import Sequence
 from dataclasses import dataclass
+from pathlib import Path
 from typing import IO, TYPE_CHECKING, Literal, NoReturn, TextIO, cast
 
 from rich.console import Console
 from rich.table import Table
 from rich.text import Text
+
+from ._fs import ProjectIOError, resolved
 
 if TYPE_CHECKING:
     from typing_extensions import override
@@ -195,6 +198,18 @@ def table(columns: Sequence[tuple[str, Justify]], rows: Sequence[Sequence[str | 
     for row in rows:
         grid.add_row(*(_plain([cell]) for cell in row))
     _console().print(grid)
+
+
+def path_argument(value: str) -> Path:
+    """An argparse `type` for a path on the command line: the path resolved.
+
+    One that cannot be resolved (a symlink loop) is an argument error, which argparse prints as
+    `<prog>: error: argument <name>: ...` before it exits with status 2.
+    """
+    try:
+        return resolved(value)
+    except ProjectIOError as error:
+        raise argparse.ArgumentTypeError(f"cannot resolve {value}: {error.reason}") from None
 
 
 class ArgumentParser(argparse.ArgumentParser):

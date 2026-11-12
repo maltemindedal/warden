@@ -363,19 +363,17 @@ def resolve_config(
 
 def _parse_args(argv: list[str] | None = None) -> CliOptions:
     parser = out.ArgumentParser(prog="warden-config")
-    parser.add_argument("project_root", help="Project root directory")
+    parser.add_argument("project_root", type=out.path_argument, help="Project root directory")
     parser.add_argument("--cli-url", default="", help="URL passed via CLI (overrides config)")
-    parser.add_argument("--config", default=None, help=f"Path to {CONFIG_FILENAME}")
+    parser.add_argument(
+        "--config", type=out.path_argument, default=None, help=f"Path to {CONFIG_FILENAME}"
+    )
     namespace = parser.parse_args(argv)
 
     return CliOptions(
-        project_root=fs.resolved(cast(str, namespace.project_root)),
+        project_root=cast(Path, namespace.project_root),
         cli_url=cast(str, namespace.cli_url),
-        config_path=(
-            fs.resolved(config_path)
-            if (config_path := cast(str | None, namespace.config)) is not None
-            else None
-        ),
+        config_path=cast(Path | None, namespace.config),
     )
 
 

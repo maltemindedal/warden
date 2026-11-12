@@ -271,8 +271,18 @@ def append_line(path: Path, line: str) -> AppendOutcome:
 
 
 def resolved(path: str | Path) -> Path:
-    """`Path(path).resolve()`. Raises only `ProjectIOError`."""
+    """`Path(path).resolve()`. Raises only `ProjectIOError`.
+
+    A symlink loop raises on every Python: `resolve()` itself raises for one only before 3.13.
+    """
     given = Path(path)
+    try:
+        os.stat(given)
+    except OSError as error:
+        if error.errno == errno.ELOOP:
+            raise ProjectIOError(given, "symbolic link loop") from None
+    except ValueError:  # a NUL byte, which `resolve()` reports below
+        pass
     with _contained(given):
         return given.resolve()
 

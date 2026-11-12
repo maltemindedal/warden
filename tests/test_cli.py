@@ -12,7 +12,7 @@ import pytest
 from pytest import CaptureFixture
 
 from fakes import RecordingRunner, symlink_or_skip
-from warden import cli
+from warden import aggregate, cli, config
 from warden._scanners import SCANNERS
 
 FIXTURE_DIR = Path(__file__).parent / "fixtures"
@@ -162,6 +162,40 @@ def test_a_project_root_that_does_not_exist_is_a_usage_error_and_nothing_is_crea
     assert not (tmp_path / "typo").exists()
     assert runner.commands == []
     assert "is not an existing directory" in capsys.readouterr().err
+
+
+@pytest.mark.parametrize(
+    ("prog", "argv"),
+    [
+        ("warden", ["--project-root", "{loop}"]),
+        ("warden", ["--project-root", "{root}", "--config", "{loop}"]),
+        ("warden-config", ["{loop}"]),
+        ("warden-config", ["{root}", "--config", "{loop}"]),
+        ("warden-aggregate", ["{loop}", "{root}/out.json"]),
+        ("warden-aggregate", ["{root}", "{loop}"]),
+    ],
+    ids=lambda value: value if isinstance(value, str) else " ".join(value),
+)
+def test_a_symlink_loop_in_a_path_argument_is_a_usage_error_not_a_traceback(
+    tmp_path: Path, capsys: CaptureFixture[str], prog: str, argv: list[str]
+) -> None:
+    """`Path.resolve()` raises RuntimeError for a loop on Python 3.11 and 3.12, which no entry
+    point caught: each of these six ended in a traceback and exit 1 (2825ae7 named the gap)."""
+    loop = tmp_path / "loop"
+    symlink_or_skip(loop, tmp_path / "back")
+    symlink_or_skip(tmp_path / "back", loop)
+    entry = {
+        "warden": lambda args: cli.main(args, runner=RecordingRunner()),
+        "warden-config": config.main,
+        "warden-aggregate": aggregate.main,
+    }[prog]
+
+    with pytest.raises(SystemExit) as exit_info:
+        entry([arg.format(loop=loop, root=tmp_path) for arg in argv])
+
+    assert exit_info.value.code == 2
+    assert f"cannot resolve {loop}: symbolic link loop" in capsys.readouterr().err
+    assert sorted(path.name for path in tmp_path.iterdir()) == ["back", "loop"]
 
 
 def test_a_project_root_that_is_a_file_is_a_usage_error(
