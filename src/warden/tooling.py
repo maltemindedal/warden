@@ -9,6 +9,7 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Protocol, cast
 
+from . import _out as out
 from ._json import JsonLimitError, as_mapping, get_string, load_json, write_json
 from ._models import CommandResult
 from ._scanners import SCANNERS, Scanner, ScanRequest
@@ -63,7 +64,7 @@ def _ignore_report_dir(root: Path) -> None:
     try:
         raw = gitignore_path.read_bytes()
         if b"\x00" in raw:
-            print("Warning: could not add .security_reports/ to .gitignore: not a text file")
+            out.say("Warning: could not add .security_reports/ to .gitignore: not a text file")
             return
         existing_lines = raw.decode("utf-8", errors="replace").splitlines()
         if any(line.strip() == ".security_reports/" for line in existing_lines):
@@ -74,7 +75,9 @@ def _ignore_report_dir(root: Path) -> None:
                 handle.write("\n")
             handle.write(".security_reports/\n")
     except OSError as error:
-        print(f"Warning: could not add .security_reports/ to .gitignore: {error.strerror or error}")
+        out.say(
+            f"Warning: could not add .security_reports/ to .gitignore: {error.strerror or error}"
+        )
 
 
 def prepare_report_dir(project_root: str | Path) -> Path:

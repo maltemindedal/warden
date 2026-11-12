@@ -66,12 +66,27 @@ target-version = "py311"
 src = ["src", "tests", "tools"]
 
 [tool.ruff.lint]
-# S: security (bandit), BLE: blind `except`, PGH: blanket `noqa` / `type: ignore`.
-select = ["B", "BLE", "E", "F", "I", "PGH", "S", "UP", "W"]
+# S: security (bandit), BLE: blind `except`, PGH: blanket `noqa` / `type: ignore`,
+# TID251: the names only `src/warden/_out.py` may use (banned-api below).
+select = ["B", "BLE", "E", "F", "I", "PGH", "S", "TID251", "UP", "W"]
+
+[tool.ruff.lint.flake8-tidy-imports.banned-api]
+# Only `_out.py` writes to the terminal: it escapes project text and survives a cp1252 stdout.
+# ruff does not match the builtin `print`, so `tests/test_boundaries.py` covers that one.
+"sys.stdout".msg = "Use warden._out.say() or json_document(): they escape project text and survive a cp1252 stdout."
+"sys.stderr".msg = "Use warden._out.error() or say_err(): they escape project text."
+"sys.__stdout__".msg = "Use warden._out.say() or json_document(): they escape project text and survive a cp1252 stdout."
+"sys.__stderr__".msg = "Use warden._out.error() or say_err(): they escape project text."
+"rich".msg = "Use warden._out.say_styled() or table(): they take text and a style name, never markup, and rich passes ESC and bidi characters through."
+"argparse.ArgumentParser".msg = "Use warden._out.ArgumentParser: argparse echoes argv to stderr unescaped."
 
 [tool.ruff.lint.per-file-ignores]
 # Tests assert by design and run fixed, list-form commands.
 "tests/**" = ["S101", "S603", "S607"]
+# The output boundary is a rule about the package: `_out.py` owns the banned names, and tests,
+# tools and skill scripts are not Warden's output.
+"src/warden/_out.py" = ["TID251"]
+"!src/warden/**" = ["TID251"]
 
 [tool.ruff.format]
 # ruff 0.16 formats Markdown by default. Keep the check on Python files, which is what it

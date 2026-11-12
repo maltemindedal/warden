@@ -5,10 +5,7 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Final
 
-from rich.console import Console
-from rich.table import Table
-from rich.text import Text
-
+from . import _out as out
 from ._models import (
     DEFAULT_FAIL_ON_SEVERITIES,
     SEVERITIES,
@@ -81,39 +78,22 @@ def print_summary(
     verdict: Verdict,
     output_file: str | Path,
 ) -> None:
-    counts = verdict.counts
-    breakdown = verdict.breakdown
-    output_path = str(output_file)
-
-    console = Console()
-    console.print("-" * 50)
-    console.print(Text("SCAN COMPLETE", style="bold cyan"))
-    console.print("-" * 50)
-
-    table = Table(show_header=True, header_style="bold")
-    table.add_column("Severity", justify="left")
-    table.add_column("Count", justify="right")
-    table.add_column("Breakdown", justify="left")
-
-    for label, severity, color, show_breakdown in SUMMARY_ROWS:
-        breakdown_text = ""
-        if show_breakdown:
-            breakdown_text = _format_breakdown(breakdown[severity], order=CATEGORY_ORDER)
-        table.add_row(
-            f"[{color}]{label}[/{color}]",
-            str(counts[severity]),
-            breakdown_text,
-        )
-
-    console.print(table)
-    console.print("-" * 50)
-    status_style, status_label, summary_line = _status_summary(verdict.failed)
-    # The path is appended as plain text, not parsed as markup or emoji codes: a project directory
-    # named like markup (`[/red]`), like an emoji code (`:warning:`) or ending in a backslash must
-    # print as written, not raise or change. A Text skips rich's repr highlighter, which colours a
-    # path on a terminal, so it is applied explicitly to keep ordinary output the same.
-    status_line = Text.from_markup(
-        f"[{status_style}]{status_label}:[/{status_style}] {summary_line} See "
+    out.say_styled("-" * 50)
+    out.say_styled(out.Span("SCAN COMPLETE", "bold cyan"))
+    out.say_styled("-" * 50)
+    out.table(
+        [("Severity", "left"), ("Count", "right"), ("Breakdown", "left")],
+        [
+            (
+                out.Span(label, color),
+                str(verdict.counts[severity]),
+                _format_breakdown(verdict.breakdown[severity], order=CATEGORY_ORDER)
+                if show_breakdown
+                else "",
+            )
+            for label, severity, color, show_breakdown in SUMMARY_ROWS
+        ],
     )
-    status_line.append(output_path)
-    console.print(console.highlighter(status_line))
+    out.say_styled("-" * 50)
+    status_style, status_label, summary_line = _status_summary(verdict.failed)
+    out.say_styled(out.Span(f"{status_label}:", status_style), f" {summary_line} See {output_file}")

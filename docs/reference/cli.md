@@ -92,6 +92,17 @@ PowerShell habits and POSIX shells. All four spellings set the same value.
   the scanner left, and goes on to the next scanner. Like any scanner that fails to run,
   that fails the run with exit `3` (only a warning under `--no-strict`); without
   `--timeout` nothing is limited, and a DAST scan can run for as long as ZAP takes.
+- **Text from the project is printed escaped.** A project path, a line quoted from
+  `.warden.yaml` or a URL can hold characters that drive a terminal. In everything
+  Warden prints, on stdout and stderr, a character that is not printable is written
+  as its backslash escape: a control character or ESC (`\x1b`), a line break (`\n`),
+  a tab (`\t`), a bidirectional override or zero-width character (`\u202e`), and
+  every space except the plain one, such as a no-break space (`\xa0`) or an
+  ideographic space (`\u3000`). A character the output encoding cannot hold (a
+  redirected stdout on a Windows code page) is written as `\uXXXX` as well. Other
+  text is printed as it is. `security_audit.json` holds the exact values. The same
+  holds for `warden-config` and `warden-aggregate`. What the scanners print
+  themselves is not changed.
 - A report Warden cannot read or parse is named by its file name:
   `Warning: Could not parse trivy.json: <reason>`. The reason is the JSON error or
   the operating system's message (`Is a directory`), without the report's path.
@@ -152,6 +163,12 @@ usage: warden-config [-h] [--cli-url CLI_URL] [--config CONFIG]
 | `--config` | `<project_root>/.warden.yaml` | Alternate config path. |
 
 Exits `0`.
+
+stdout is one line holding one JSON document. A character in a value that is not
+printable (a control character, a bidirectional override, a no-break space), or
+that the output encoding cannot hold, is written as a JSON `\uXXXX` escape, so
+the document parses to the configured values on any terminal and code page.
+Other non-ASCII text is left readable. Warnings go to stderr.
 
 ### Examples
 

@@ -32,15 +32,16 @@ All under `src/warden/`.
 
 | Module | Responsibility |
 | --- | --- |
-| `cli.py` | Entry point. Parses arguments, sequences the stages, prints progress, returns the exit code. |
+| `cli.py` | Entry point. Parses arguments, sequences the stages, reports progress, returns the exit code. |
 | `config.py` | Parses `.warden.yaml` and resolves it against CLI arguments into a `ResolvedConfig`. Also the `warden-config` entry point. |
 | `tooling.py` | Prepares the report directory, runs a scanner's command line through a `CommandRunner`, filters a report against `exclude_dirs` for a scanner that cannot skip paths, and records what the run came to in a `ToolRunResult`. The only module that touches subprocesses. |
 | `aggregate.py` | Assembles the report from the parsed findings and writes it. Also the `warden-aggregate` entry point. |
 | `_parsers.py` | Turns each tool's JSON into `Finding` records and normalises severities. |
-| `_summary.py` | Creates a `Verdict` with counts, a category breakdown, and the build result, then prints its terminal table. |
+| `_summary.py` | Creates a `Verdict` with counts, a category breakdown, and the build result, then lays out the terminal summary. |
 | `_json.py` | Type-narrowing helpers for walking untrusted JSON, and the reader and writer of JSON files. A file it cannot parse comes back as an error, not a printed warning; one that is valid JSON but more than Python can parse raises `JsonLimitError`; and text UTF-8 cannot encode (a lone surrogate) is written as its escape rather than raising. |
 | `_scanners.py` | One `Scanner` record per tool Warden knows about, the registry of them, and the code that builds each one's command line. |
 | `_models.py` | Shared dataclasses, typed dicts, and constants. No logic. |
+| `_out.py` | The only module that writes to stdout or stderr, and the only one that imports `rich` or builds an argument parser. It writes a line, an `error:` line, a styled line, a table or a JSON document, and escapes each one as described below. |
 
 The dependency direction is one-way: `cli` depends on `config`, `tooling`, and
 `aggregate`, which do not depend on each other. Every module that needs to know
@@ -50,6 +51,20 @@ record carries its tool's parser. `aggregate` depends on `_parsers` and
 and contains no behavior. Records with derived properties live with the code
 that uses them. This puts `Verdict` in `_summary.py`, `Scanner` in
 `_scanners.py` and `ToolRunResult` in `tooling.py`.
+
+Every module that has something to say imports `_out`, which imports no other
+package module. The scanned project is hostile input, and its text reaches the
+terminal in paths, config warnings and URLs. `_out` therefore escapes every line
+at the last step, whoever built it: a character that `str.isprintable` rejects
+(a control character, ESC, a bidi override, a line break, any space but U+0020)
+is written as its backslash escape, and so is a character the stream's encoding
+cannot hold. Callers pass plain strings and do not escape anything. rich gets
+text and a style name, never a markup string. No module reconfigures a stream,
+so the three entry points behave alike. `tests/test_boundaries.py` and the
+`TID251` entries in `pyproject.toml` fail on a `print`, a `sys.stdout`, a
+`rich` import or an `argparse.ArgumentParser` anywhere else in the package.
+The scanners' own output is not covered: they inherit Warden's stdout and
+write to it directly.
 
 `aggregate.py` once contained the parsing, rendering, and JSON-reading code.
 Those parts moved to separate modules when they began changing independently.

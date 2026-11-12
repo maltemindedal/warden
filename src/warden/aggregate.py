@@ -1,11 +1,10 @@
 from __future__ import annotations
 
-import argparse
-import sys
 from collections.abc import Sequence
 from pathlib import Path
 from typing import cast
 
+from . import _out as out
 from ._json import JsonLimitError, load_json, write_json
 from ._models import (
     AggregateCliOptions,
@@ -51,10 +50,10 @@ def _load_reports(report_dir: Path) -> list[tuple[Scanner, object | None]]:
     for scanner in SCANNERS:
         loaded = load_json(report_dir / scanner.report_file)
         if loaded.error is not None:
-            print(f"Warning: Could not parse {scanner.report_file}: {loaded.error}")
+            out.say(f"Warning: Could not parse {scanner.report_file}: {loaded.error}")
         elif loaded.found and not scanner.reads_report(loaded.data):
             shape = "array" if scanner.report_is_array else "object"
-            print(
+            out.say(
                 f"Warning: {scanner.report_file} is not the JSON {shape} {scanner.label} writes, "
                 f"so {scanner.label} is left out of tools_run."
             )
@@ -100,14 +99,14 @@ def generate_report(
     """Write the report and print its summary; return the verdict and the report's `tools_run`."""
     findings, report = build_report(report_dir)
     write_report(output_file, report)
-    print(f"Generated {output_file} with {len(findings)} issues.")
+    out.say(f"Generated {output_file} with {len(findings)} issues.")
     verdict = judge(findings)
     print_summary(verdict=verdict, output_file=output_file)
     return verdict, report["summary"]["tools_run"]
 
 
 def _parse_args(argv: list[str] | None = None) -> AggregateCliOptions:
-    parser = argparse.ArgumentParser(
+    parser = out.ArgumentParser(
         prog="warden-aggregate",
         description=(
             "Aggregate security scanner reports (Trivy, Semgrep, Gitleaks, ZAP) "
@@ -132,10 +131,9 @@ def _parse_args(argv: list[str] | None = None) -> AggregateCliOptions:
 
 def main(argv: list[str] | None = None) -> int:
     options = _parse_args(argv)
-    print(f"--- Aggregating Reports from {options.report_dir} ---")
+    out.say(f"--- Aggregating Reports from {options.report_dir} ---")
     try:
         verdict, _ = generate_report(report_dir=options.report_dir, output_file=options.output_file)
     except JsonLimitError as error:
-        print(f"warden-aggregate: error: {error}, {FAILS_CLOSED}", file=sys.stderr)
-        return 1
+        return out.error("warden-aggregate", f"{error}, {FAILS_CLOSED}")
     return 1 if verdict.failed else 0
