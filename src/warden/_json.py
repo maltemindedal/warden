@@ -83,9 +83,11 @@ def load_json(path: str | Path) -> LoadedJson:
     fails rather than pass without them.
     """
     file_path = Path(path)
-    # A report is read through a symlink, as the scanner wrote it: the directory is Warden's own,
-    # and refusing one could only drop findings.
-    match fs.read_text(file_path, accept=fs.Accept.ANYTHING, max_bytes=None, encoding="utf-8"):
+    # A report is read through a symlink, as the scanner wrote it, and whole: the directory is
+    # Warden's own, and refusing a link or cutting the file at a cap could only drop findings.
+    # A file the project supplies is read with `REGULAR_NO_LINK` and a `max_bytes` instead.
+    owned = fs.Accept.USER_GIVEN_OR_WARDEN_OWNED
+    match fs.read_text(file_path, accept=owned, max_bytes=None, encoding="utf-8"):
         case fs.Absent():
             return LoadedJson()
         case fs.Unlocatable(reason):

@@ -72,8 +72,11 @@ def _parse_args(argv: list[str] | None = None) -> CliOptions:
     if timeout is not None and not 0 < timeout <= _MAX_TIMEOUT_SECONDS:  # also rejects nan, inf
         parser.error(f"--timeout must be a number of seconds from 0 up to {_MAX_TIMEOUT_SECONDS}")
     project_root = cast(Path, namespace.project_root)
-    if not fs.is_dir(project_root):
-        parser.error(f"--project-root {project_root} is not an existing directory")
+    try:
+        if not fs.is_dir(project_root):
+            parser.error(f"--project-root {project_root} is not an existing directory")
+    except fs.ProjectIOError as error:
+        parser.error(f"--project-root {project_root} cannot be looked up: {error.reason}")
     return CliOptions(
         project_root=project_root,
         cli_url=cast(str, namespace.url),
@@ -204,7 +207,8 @@ def run_audit(options: CliOptions, *, runner: tooling.CommandRunner) -> int:
     output_file = output.path
     try:
         report_dir = tooling.prepare_report_dir(options.project_root)
-        tooling.clear_output_file(output_file)
+        # A symlink or named pipe the project put at the name goes now, before any scanner runs.
+        output.make_way()
     except fs.ProjectIOError as error:
         return out.error("warden", f"cannot prepare the report paths: {error}")
 

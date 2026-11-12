@@ -120,9 +120,12 @@ def _parse_args(argv: list[str] | None = None) -> AggregateCliOptions:
     )
     namespace = parser.parse_args(argv)
     report_dir = cast(Path, namespace.report_dir)
-    if not fs.is_dir(report_dir):
-        # A missing directory is not "no reports": a typo would otherwise print PASS.
-        parser.error(f"report_dir {report_dir} is not an existing directory")
+    try:
+        if not fs.is_dir(report_dir):
+            # A missing directory is not "no reports": a typo would otherwise print PASS.
+            parser.error(f"report_dir {report_dir} is not an existing directory")
+    except fs.ProjectIOError as error:
+        parser.error(f"report_dir {report_dir} cannot be looked up: {error.reason}")
     return AggregateCliOptions(
         report_dir=report_dir,
         output_file=cast(Path, namespace.output_file),

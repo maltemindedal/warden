@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import errno
 import io
 import json
 import os
@@ -163,6 +164,23 @@ def test_a_project_root_that_does_not_exist_is_a_usage_error_and_nothing_is_crea
     assert not (tmp_path / "typo").exists()
     assert runner.commands == []
     assert "is not an existing directory" in capsys.readouterr().err
+
+
+def test_a_project_root_that_cannot_be_looked_up_is_not_called_missing(
+    tmp_path: Path, capsys: CaptureFixture[str]
+) -> None:
+    """`fs.is_dir` answered `False` when the lookup failed, so a root that may well exist was
+    reported as "not an existing directory". The usage error now gives the lookup's reason."""
+    runner = RecordingRunner()
+
+    with pytest.raises(SystemExit) as exit_info:
+        cli.main(["--project-root", str(tmp_path / ("a" * 300))], runner=runner)
+
+    error = capsys.readouterr().err
+    assert exit_info.value.code == 2
+    assert runner.commands == []
+    assert f"cannot be looked up: {os.strerror(errno.ENAMETOOLONG)}" in error
+    assert "is not an existing directory" not in error
 
 
 @pytest.mark.parametrize(

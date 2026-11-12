@@ -90,13 +90,13 @@ select = ["B", "BLE", "E", "F", "I", "PGH", "S", "TID251", "UP", "W"]
 # Only `_fs.py` touches the file system: a read there returns an outcome instead of raising,
 # and everything else raises one type. ruff does not match the builtin `open` or a method on a
 # `Path`, so `tests/test_boundaries.py` covers those, and runs every row here through ruff.
-"io.open".msg = "Use warden._fs.read_text() or read_bytes(): they return an outcome instead of raising, so a project file cannot end the run in a traceback."
-"os.open".msg = "Use warden._fs.read_text() or read_bytes(): they return an outcome instead of raising, so a project file cannot end the run in a traceback."
-"os.fdopen".msg = "Use warden._fs.read_text() or read_bytes(): they return an outcome instead of raising, so a project file cannot end the run in a traceback."
-"os.listdir".msg = "Use warden._fs.read_text() or read_bytes(): they return an outcome instead of raising, so a project file cannot end the run in a traceback."
-"os.scandir".msg = "Use warden._fs.read_text() or read_bytes(): they return an outcome instead of raising, so a project file cannot end the run in a traceback."
-"os.walk".msg = "Use warden._fs.read_text() or read_bytes(): they return an outcome instead of raising, so a project file cannot end the run in a traceback."
-"glob".msg = "Use warden._fs.read_text() or read_bytes(): they return an outcome instead of raising, so a project file cannot end the run in a traceback."
+"io.open".msg = "Use warden._fs.read_text(path, accept=fs.Accept.REGULAR_NO_LINK, max_bytes=<the most you will hold>, encoding=...) or read_bytes(): they return an outcome instead of raising, so a project file cannot end the run in a traceback."
+"os.open".msg = "Use warden._fs.read_text(path, accept=fs.Accept.REGULAR_NO_LINK, max_bytes=<the most you will hold>, encoding=...) or read_bytes(): they return an outcome instead of raising, so a project file cannot end the run in a traceback."
+"os.fdopen".msg = "Use warden._fs.read_text(path, accept=fs.Accept.REGULAR_NO_LINK, max_bytes=<the most you will hold>, encoding=...) or read_bytes(): they return an outcome instead of raising, so a project file cannot end the run in a traceback."
+"os.listdir".msg = "Use warden._fs.read_text(path, accept=fs.Accept.REGULAR_NO_LINK, max_bytes=<the most you will hold>, encoding=...) or read_bytes(): they return an outcome instead of raising, so a project file cannot end the run in a traceback."
+"os.scandir".msg = "Use warden._fs.read_text(path, accept=fs.Accept.REGULAR_NO_LINK, max_bytes=<the most you will hold>, encoding=...) or read_bytes(): they return an outcome instead of raising, so a project file cannot end the run in a traceback."
+"os.walk".msg = "Use warden._fs.read_text(path, accept=fs.Accept.REGULAR_NO_LINK, max_bytes=<the most you will hold>, encoding=...) or read_bytes(): they return an outcome instead of raising, so a project file cannot end the run in a traceback."
+"glob".msg = "Use warden._fs.read_text(path, accept=fs.Accept.REGULAR_NO_LINK, max_bytes=<the most you will hold>, encoding=...) or read_bytes(): they return an outcome instead of raising, so a project file cannot end the run in a traceback."
 "os.unlink".msg = "Use a warden._fs.WritableFile from owned_file() or as_given(): it raises only ProjectIOError and says what a symlink at the name means."
 "os.remove".msg = "Use a warden._fs.WritableFile from owned_file() or as_given(): it raises only ProjectIOError and says what a symlink at the name means."
 "os.rename".msg = "Use a warden._fs.WritableFile from owned_file() or as_given(): it raises only ProjectIOError and says what a symlink at the name means."

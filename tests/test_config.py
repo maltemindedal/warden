@@ -726,7 +726,7 @@ def test_notes_past_the_cap_are_counted_but_never_built(
         calls.append(text)
         return repr(text[:limit])
 
-    monkeypatch.setattr(config_module, "shown", counting_shown)
+    monkeypatch.setattr(config_module.out, "shown", counting_shown)
 
     warnings = _warnings_for(tmp_path, "x\n" * 5_000)
 

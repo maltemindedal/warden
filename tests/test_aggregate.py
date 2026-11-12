@@ -1,6 +1,8 @@
 from __future__ import annotations
 
+import errno
 import json
+import os
 import shutil
 from pathlib import Path
 
@@ -407,3 +409,18 @@ def test_a_report_dir_that_does_not_exist_is_a_usage_error_not_a_pass(
     assert exit_info.value.code == 2
     assert not output_file.exists()
     assert "is not an existing directory" in capsys.readouterr().err
+
+
+def test_a_report_dir_that_cannot_be_looked_up_is_not_called_missing(
+    tmp_path: Path, capsys: CaptureFixture[str]
+) -> None:
+    """The same answer `warden --project-root` gives: a failed lookup is not "no directory"."""
+    output_file = tmp_path / "security_audit.json"
+
+    with pytest.raises(SystemExit) as exit_info:
+        main([str(tmp_path / ("a" * 300)), str(output_file)])
+
+    error = capsys.readouterr().err
+    assert exit_info.value.code == 2
+    assert not output_file.exists()
+    assert f"cannot be looked up: {os.strerror(errno.ENAMETOOLONG)}" in error
