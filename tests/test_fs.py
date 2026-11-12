@@ -50,7 +50,8 @@ def test_a_path_too_long_to_look_up_is_unlocatable_not_absent(
 
 
 def test_a_symlink_is_followed_only_where_the_caller_accepts_one(tmp_path: Path) -> None:
-    """Appending to a symlinked `.gitignore` would write through the link to a file elsewhere."""
+    """A symlinked `.warden.yaml` had its target's lines quoted in warnings, and appending to a
+    symlinked `.gitignore` would write through the link to a file elsewhere."""
     target = tmp_path / "target"
     target.write_text("secret", encoding="utf-8")
     link = tmp_path / "link"
@@ -59,7 +60,6 @@ def test_a_symlink_is_followed_only_where_the_caller_accepts_one(tmp_path: Path)
     refused = fs.read_bytes(link, accept=fs.Accept.REGULAR_NO_LINK)
 
     assert refused == fs.NotRegular("a symbolic link")
-    assert fs.read_bytes(link, accept=fs.Accept.REGULAR) == fs.Bytes(b"secret")
     assert fs.read_bytes(link, accept=fs.Accept.ANYTHING) == fs.Bytes(b"secret")
 
 
@@ -70,23 +70,17 @@ def test_a_dangling_symlink_is_not_mistaken_for_no_file_at_a_project_path(tmp_pa
     symlink_or_skip(link, tmp_path / "nowhere")
 
     assert fs.read_bytes(link, accept=fs.Accept.REGULAR_NO_LINK) == fs.NotRegular("a symbolic link")
-    assert fs.read_bytes(link, accept=fs.Accept.REGULAR) == fs.NotRegular(
-        "a dangling symbolic link"
-    )
     assert fs.read_bytes(link, accept=fs.Accept.ANYTHING) == fs.Absent()
 
 
 @needs_named_pipes
-@pytest.mark.parametrize(
-    "accept", [fs.Accept.REGULAR_NO_LINK, fs.Accept.REGULAR], ids=lambda accept: accept.name
-)
-def test_a_named_pipe_is_refused_without_being_opened(tmp_path: Path, accept: fs.Accept) -> None:
+def test_a_named_pipe_is_refused_without_being_opened(tmp_path: Path) -> None:
     """Reading a pipe nobody writes to blocks forever. Run in a subprocess so a regression fails
     on the timeout instead of hanging the suite."""
     os.mkfifo(tmp_path / "pipe")
     script = (
         "import sys; from pathlib import Path; from warden import _fs as fs; "
-        f"print(fs.read_bytes(Path(sys.argv[1]), accept=fs.Accept.{accept.name}))"
+        "print(fs.read_bytes(Path(sys.argv[1]), accept=fs.Accept.REGULAR_NO_LINK))"
     )
 
     completed = subprocess.run(
@@ -103,7 +97,9 @@ def test_a_named_pipe_is_refused_without_being_opened(tmp_path: Path, accept: fs
 def test_a_directory_is_not_regular_or_is_unreadable_and_never_raises(tmp_path: Path) -> None:
     """`--config <directory>` reads whatever is there, and the read then fails with the reason
     the warning has always printed."""
-    assert fs.read_bytes(tmp_path, accept=fs.Accept.REGULAR) == fs.NotRegular("a directory")
+    refused = fs.read_bytes(tmp_path, accept=fs.Accept.REGULAR_NO_LINK)
+
+    assert refused == fs.NotRegular("a directory")
     anything = fs.read_bytes(tmp_path, accept=fs.Accept.ANYTHING)
 
     assert isinstance(anything, fs.Unreadable)
@@ -117,7 +113,7 @@ def test_bytes_that_are_not_the_encoding_are_unreadable_with_the_codec_message(
     path = tmp_path / "legacy.yaml"
     path.write_bytes(b"# caf\xe9\n")
 
-    outcome = fs.read_text(path, accept=fs.Accept.REGULAR, encoding="utf-8")
+    outcome = fs.read_text(path, accept=fs.Accept.REGULAR_NO_LINK, encoding="utf-8")
 
     assert isinstance(outcome, fs.Unreadable)
     assert "codec can't decode byte 0xe9" in outcome.reason

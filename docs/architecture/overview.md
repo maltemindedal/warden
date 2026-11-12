@@ -97,7 +97,7 @@ Those parts moved to separate modules when they began changing independently.
 1. **Resolve configuration.** `config.resolve_config` reads `.warden.yaml` if
    present and merges it with CLI arguments. A missing or
    unparsable file yields defaults, and so does a `.warden.yaml` in the project
-   that is not a regular file (a named pipe, say).
+   that is not a regular file (a named pipe, say) or is a symbolic link.
 2. **Prepare the report directory.** `.security_reports/` is created in the
    project root, and appended to `.gitignore` if that file exists and does not
    already list it (best effort: a `.gitignore` that cannot be read, written or
