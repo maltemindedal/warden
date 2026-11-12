@@ -61,6 +61,26 @@ Docs mirror the code exactly; change them in the same commit:
 - A new doc gets a row in `docs/README.md`. Run every command you document.
 - `tests/test_docs.py` checks the part a test can derive: the severity and `riskcode` tables, report files and categories, each command's usage, the config keys, a version named for a package in `uv.lock`, and no to-do marker left in a doc. Its failure names the file and the text to write. Name a locked version as the locked one or as a closed range (`1.173.0 through 1.184.0`), never an open `from 1.173`. Prose about behaviour is not checked, so run what it describes.
 
+## Rules and what enforces them
+
+When a reviewer corrects an agent, fix the mistake and add its rule here. A rule with nothing in the right column that is broken again gets a check in the same change. Drop a row once its mistake cannot be written.
+
+| Rule | Enforced by |
+| --- | --- |
+| Only `_out.py` writes to the terminal | `tests/test_boundaries.py`, ruff `TID251` |
+| Only `_fs.py` touches the file system, and every read outcome is handled | `tests/test_boundaries.py`, ruff `TID251`, ty (`assert_never`) |
+| A config note's format is a literal, with file text as arguments | ty (`LiteralString`) |
+| Scanner facts live only in `SCANNERS` | `tests/test_scanners.py` |
+| A flag Warden builds exists in the pinned tool | `tests/test_scanner_flags.py`, run against the image's binaries in CI's `scan` job |
+| A scanner that leaves no usable report fails the run | strict by default; CI's `scan` job runs it on this repo |
+| Reference docs match the code | `tests/test_docs.py` |
+| The uv pin matches in the `Dockerfile` and both installers | `tests/test_install.py`; `python3 tools/sync_pins.py` fixes it |
+| `uv.lock` matches `pyproject.toml` | `uv lock --check`, CI's `UV_LOCKED=1` |
+| Claims in commit messages and PRs are only what you ran | prose only: no check can tell a true claim from a false one |
+| Regression tests are mutation-checked | prose only |
+| Tests inject through `RecordingRunner`, never `unittest.mock` | prose only |
+| `install.sh` and `bin/warden*` stay mode `100755` | prose only |
+
 ## Gotchas
 
 - Never pass `--url` to `warden`, or the workflow's `url` input: ZAP runs an active attack scan against that host. Exercise DAST code through `RecordingRunner` tests instead.
