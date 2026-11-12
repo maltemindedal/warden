@@ -16,8 +16,9 @@ with `shown` passes through unchanged. Callers therefore never ask "is this stri
 build a line the obvious way, with an f-string, and hand it over.
 
 Imports the standard library, rich and `_fs`, and nothing else in the package.
-`tests/test_boundaries.py` and ruff's `TID251` keep `print`, `sys.stdout`, `sys.stderr`, rich and
-`argparse.ArgumentParser` out of every other module.
+`tests/test_boundaries.py` and ruff's `TID251` keep `print`, `sys.stdout`, `sys.stderr`, `sys.exit`,
+`SystemExit`, `logging`, `warnings`, `traceback`, rich and `argparse.ArgumentParser` out of every
+other module, and the file system's names out of this one.
 """
 
 from __future__ import annotations

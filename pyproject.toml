@@ -79,6 +79,14 @@ select = ["B", "BLE", "E", "F", "I", "PGH", "S", "TID251", "UP", "W"]
 "sys.__stderr__".msg = "Use warden._out.error() or say_err(): they escape project text."
 "rich".msg = "Use warden._out.say_styled() or table(): they take text and a style name, never markup, and rich passes ESC and bidi characters through."
 "argparse.ArgumentParser".msg = "Use warden._out.ArgumentParser: argparse echoes argv to stderr unescaped."
+# The other ways a line reaches the terminal. Python prints the argument of `sys.exit("...")` and
+# of `raise SystemExit("...")` to stderr as it is; ruff does not match the builtin `SystemExit`,
+# so `tests/test_boundaries.py` covers that one.
+"sys.exit".msg = "Return the status from main(), and say why with warden._out.error(): it escapes project text and returns 1."
+"os.write".msg = "Use warden._out.say() or say_err(): they escape project text and survive a cp1252 stdout."
+"logging".msg = "Use warden._out.say() or say_err(): a logging handler writes project text to stderr unescaped."
+"warnings".msg = "Use warden._out.say() or say_err() with a line that starts `Warning: `: warnings.warn writes project text to stderr unescaped."
+"traceback".msg = "Use warden._out.error(): a traceback prints project paths unescaped, and a file-system problem is a ProjectIOError that out.entry_point already reports."
 # Only `_fs.py` touches the file system: a read there returns an outcome instead of raising,
 # and everything else raises one type. ruff does not match the builtin `open` or a method on a
 # `Path`, so `tests/test_boundaries.py` covers those, and runs every row here through ruff.
@@ -114,6 +122,8 @@ select = ["B", "BLE", "E", "F", "I", "PGH", "S", "TID251", "UP", "W"]
 "tests/**" = ["S101", "S603", "S607"]
 # The two boundaries are rules about the package: `_out.py` and `_fs.py` own the banned names,
 # and tests, tools and skill scripts are neither Warden's output nor its reads of a project.
+# ruff can only switch the rule off for a whole file, so `tests/test_boundaries.py` lints each of
+# the two without this exemption and fails on a name that belongs to the other one.
 "src/warden/_out.py" = ["TID251"]
 "src/warden/_fs.py" = ["TID251"]
 "!src/warden/**" = ["TID251"]
