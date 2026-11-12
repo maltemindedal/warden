@@ -34,10 +34,16 @@ def _parse_args(argv: list[str] | None = None) -> CliOptions:
     )
     parser.add_argument(
         "--project-root",
+        type=out.path_argument,
         default=".",
         help="Project root to scan (defaults to the current working directory)",
     )
-    parser.add_argument("--config", default=None, help=f"Optional path to {config.CONFIG_FILENAME}")
+    parser.add_argument(
+        "--config",
+        type=out.path_argument,
+        default=None,
+        help=f"Optional path to {config.CONFIG_FILENAME}",
+    )
     parser.add_argument(
         "--strict",
         action="store_true",
@@ -64,14 +70,13 @@ def _parse_args(argv: list[str] | None = None) -> CliOptions:
     timeout = cast(float | None, namespace.timeout)
     if timeout is not None and not 0 < timeout <= _MAX_TIMEOUT_SECONDS:  # also rejects nan, inf
         parser.error(f"--timeout must be a number of seconds from 0 up to {_MAX_TIMEOUT_SECONDS}")
-    project_root = fs.resolved(cast(str, namespace.project_root))
+    project_root = cast(Path, namespace.project_root)
     if not fs.is_dir(project_root):
         parser.error(f"--project-root {project_root} is not an existing directory")
-    config_path_value = cast(str | None, namespace.config)
     return CliOptions(
         project_root=project_root,
         cli_url=cast(str, namespace.url),
-        config_path=fs.resolved(config_path_value) if config_path_value is not None else None,
+        config_path=cast(Path | None, namespace.config),
         timeout=timeout,
         strict=cast(bool, namespace.strict),
     )

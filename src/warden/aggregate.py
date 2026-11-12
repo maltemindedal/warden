@@ -110,17 +110,20 @@ def _parse_args(argv: list[str] | None = None) -> AggregateCliOptions:
     )
     parser.add_argument(
         "report_dir",
+        type=out.path_argument,
         help="Directory containing tool JSON outputs (for example: trivy.json, semgrep.json)",
     )
-    parser.add_argument("output_file", help="Path to write the aggregated JSON report")
+    parser.add_argument(
+        "output_file", type=out.path_argument, help="Path to write the aggregated JSON report"
+    )
     namespace = parser.parse_args(argv)
-    report_dir = fs.resolved(cast(str, namespace.report_dir))
+    report_dir = cast(Path, namespace.report_dir)
     if not fs.is_dir(report_dir):
         # A missing directory is not "no reports": a typo would otherwise print PASS.
         parser.error(f"report_dir {report_dir} is not an existing directory")
     return AggregateCliOptions(
         report_dir=report_dir,
-        output_file=fs.resolved(cast(str, namespace.output_file)),
+        output_file=cast(Path, namespace.output_file),
     )
 
 

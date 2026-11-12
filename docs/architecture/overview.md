@@ -42,7 +42,7 @@ All under `src/warden/`.
 | `_scanners.py` | One `Scanner` record per tool Warden knows about, the registry of them, and the code that builds each one's command line. |
 | `_models.py` | Shared dataclasses, typed dicts, and constants. No logic. |
 | `_fs.py` | The only module that touches the file system. A read returns an outcome (the text, absent, not a regular file, unlocatable, unreadable) and never raises. A write, a delete or a lookup raises `ProjectIOError` and nothing else. Text UTF-8 cannot encode (a lone surrogate) is written as its escape rather than raising. |
-| `_out.py` | The only module that writes to stdout or stderr, and the only one that imports `rich` or builds an argument parser. It writes a line, an `error:` line, a styled line, a table or a JSON document, and escapes each one as described below. |
+| `_out.py` | The only module that writes to stdout or stderr, and the only one that imports `rich` or builds an argument parser. A path argument is resolved by its `path_argument`, so one that cannot be resolved is an argument error. It writes a line, an `error:` line, a styled line, a table or a JSON document, and escapes each one as described below. |
 
 The dependency direction is one-way: `cli` depends on `config`, `tooling`, and
 `aggregate`, which do not depend on each other. Every module that needs to know
@@ -54,7 +54,7 @@ that uses them. This puts `Verdict` in `_summary.py`, `Scanner` in
 `_scanners.py` and `ToolRunResult` in `tooling.py`.
 
 Every module that has something to say imports `_out`, which imports no other
-package module. The scanned project is hostile input, and its text reaches the
+package module but `_fs`. The scanned project is hostile input, and its text reaches the
 terminal in paths, config warnings and URLs. `_out` therefore escapes every line
 at the last step, whoever built it: a character that `str.isprintable` rejects
 (a control character, ESC, a bidi override, a line break, any space but U+0020)
