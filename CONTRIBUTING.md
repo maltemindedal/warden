@@ -96,8 +96,8 @@ One constraint in `[tool.uv]` is deliberate and will affect you:
 
 - `override-dependencies = ["mcp>=1.28.1,<2"]` replaces Semgrep's own `mcp`
   requirement. Warden does not import `mcp`. Semgrep 1.146.0 through 1.172.0
-  require `mcp==1.23.3`. Semgrep 1.173.0 through 1.184.0 require `mcp==1.29.0`.
-  `uv.lock` locks Semgrep at 1.184.0 and `mcp` at 1.30.0. The sdist for that
+  require `mcp==1.23.3`. Semgrep 1.173.0 through 1.185.0 require `mcp==1.29.0`.
+  `uv.lock` locks Semgrep at 1.185.0 and `mcp` at 1.30.0. The sdist for that
   Semgrep release requires `mcp==1.29.0`. The override's range includes 1.30.0.
   The upper bound is `<2`. mcp 2.x renamed the modules Semgrep imports, so
   `semgrep` fails at startup on a 2.x resolve.
